@@ -98,40 +98,6 @@ static void queue_key_to_str(_In_ sai_object_id_t queue_id, _Out_ char *key_str)
     }
 }
 
-/*
- * Get index of port configuration in port qos db
- *
- * Arguments:
- *    [in]  log_port_id - logical port id
- *    [out] index       - index of the port in qos db
- *
- * Return Values:
- *    SAI_STATUS_SUCCESS
- *    SAI_STATUS_FAILURE
- *
- */
-sai_status_t mlnx_qos_get_port_index(sx_port_log_id_t log_port_id, uint32_t *index)
-{
-    uint32_t ii = 0;
-
-    if (NULL == index) {
-        return SAI_STATUS_INVALID_PARAMETER;
-    }
-
-    sai_db_read_lock();
-    for (; ii < MAX_PORTS; ii++) {
-        if (log_port_id == g_sai_qos_db_ptr->qos_port_db[ii].log_port_id) {
-            *index = ii;
-            sai_db_unlock();
-            return SAI_STATUS_SUCCESS;
-        }
-    }
-
-    sai_db_unlock();
-    SX_LOG_ERR("Port 0x%x not found in DB\n", log_port_id);
-    return SAI_STATUS_INVALID_PORT_NUMBER;
-}
-
 /* Set queue buffer and scheduler profiles */
 static sai_status_t mlnx_queue_config_set(_In_ const sai_object_key_t      *key,
                                           _In_ const sai_attribute_value_t *value,
@@ -410,7 +376,7 @@ static sai_status_t mlnx_get_queue_statistics(_In_ sai_object_id_t              
     }
 
     /* TODO : assumes one to one mapping, with same value, of IEEE prio = queue num
-     * SDK extension may do the mapping from IEEE prio to TC, and remove this limitation 
+     * SDK extension may do the mapping from IEEE prio to TC, and remove this limitation
      * and use sx_api_port_counter_tc_get */
     if (SX_STATUS_SUCCESS !=
         (status = sx_api_port_counter_prio_get(gh_sdk, SX_ACCESS_CMD_READ, port_num, queue_num, &prio_cnts))) {
@@ -525,8 +491,8 @@ static sai_status_t mlnx_clear_queue_stats(_In_ sai_object_id_t                 
 /* QoS DB lock is required */
 sai_status_t mlnx_queue_cfg_lookup(sx_port_log_id_t log_port_id, uint32_t queue_idx, mlnx_qos_queue_config_t **cfg)
 {
-    mlnx_qos_port_config_t *port;
-    uint32_t                ii;
+    mlnx_port_config_t *port;
+    uint32_t            ii;
 
     if (queue_idx >= MAX_QUEUES) {
         SX_LOG_ERR("Invalid queue num %u - exceed maximum %u\n", queue_idx,
@@ -534,8 +500,8 @@ sai_status_t mlnx_queue_cfg_lookup(sx_port_log_id_t log_port_id, uint32_t queue_
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    qos_port_foreach(port, ii) {
-        if (port->log_port_id != log_port_id) {
+    mlnx_port_foreach(port, ii) {
+        if (port->logical != log_port_id) {
             continue;
         }
 
@@ -549,7 +515,46 @@ sai_status_t mlnx_queue_cfg_lookup(sx_port_log_id_t log_port_id, uint32_t queue_
     return SAI_STATUS_INVALID_PARAMETER;
 }
 
+/**
+* Routine Description:
+*    @brief Create queue
+*
+* Arguments:
+*    @param[out] queue_id - queue id
+*    @param[in] attr_count - number of attributes
+*    @param[in] attr_list - array of attributes
+*
+* Return Values:
+*    @return SAI_STATUS_SUCCESS on success
+*            Failure status code on error
+*
+*/
+sai_status_t mlnx_create_queue(_Out_ sai_object_id_t* queue_id,
+    _In_ uint32_t attr_count,
+    _In_ const sai_attribute_t *attr_list)
+{
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
+/**
+* Routine Description:
+*    @brief Remove queue
+*
+* Arguments:
+*    @param[in] queue_id - queue id
+*
+* Return Values:
+*    @return SAI_STATUS_SUCCESS on success
+*            Failure status code on error
+*/
+sai_status_t mlnx_remove_queue(_In_ sai_object_id_t queue_id)
+{
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 const sai_queue_api_t mlnx_queue_api = {
+    mlnx_create_queue,
+    mlnx_remove_queue,
     mlnx_set_queue_attribute,
     mlnx_get_queue_attribute,
     mlnx_get_queue_statistics,

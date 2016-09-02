@@ -89,6 +89,7 @@ static void route_key_to_str(_In_ const sai_unicast_route_entry_t* unicast_route
     sai_ipprefix_to_str(unicast_route_entry->destination, MAX_KEY_STR_LEN - res, key_str + res);
 }
 
+_Success_(return == SAI_STATUS_SUCCESS)
 static sai_status_t mlnx_translate_sai_route_entry_to_sdk(_In_ const sai_unicast_route_entry_t* unicast_route_entry,
                                                           _Out_ sx_ip_prefix_t                 *ip_prefix,
                                                           _Out_ sx_router_id_t                 *vrid)
@@ -120,6 +121,7 @@ static sai_status_t mlnx_fill_route_data(sx_uc_route_data_t              *route_
     sx_next_hop_t sdk_next_hop;
     uint32_t      sdk_next_hop_cnt;
     uint32_t      rif_data;
+    uint32_t      port_data;
 
     SX_LOG_ENTER();
 
@@ -173,6 +175,16 @@ static sai_status_t mlnx_fill_route_data(sx_uc_route_data_t              *route_
         }
         route_data->uc_route_param.local_egress_rif = (sx_router_interface_t)rif_data;
         route_data->type                            = SX_UC_ROUTE_TYPE_LOCAL;
+    } else if (SAI_OBJECT_TYPE_PORT == sai_object_type_query(oid)) {
+        if (SAI_STATUS_SUCCESS !=
+            (status = mlnx_object_to_type(oid, SAI_OBJECT_TYPE_PORT, &port_data, NULL))) {
+            return status;
+        }
+        if (CPU_PORT != port_data) {
+            SX_LOG_ERR("Invalid port passed as next hop id, only cpu port is valid - %u %u\n", port_data, CPU_PORT);
+            return SAI_STATUS_INVALID_ATTR_VALUE_0 + next_hop_param_index;
+        }
+        route_data->type = SX_UC_ROUTE_TYPE_IP2ME;
     } else {
         SX_LOG_ERR("Invalid next hop object type - %s\n", SAI_TYPE_STR(sai_object_type_query(oid)));
         return SAI_STATUS_INVALID_ATTR_VALUE_0 + next_hop_param_index;
@@ -208,7 +220,7 @@ static sai_status_t mlnx_create_route(_In_ const sai_unicast_route_entry_t* unic
     char                         list_str[MAX_LIST_VALUE_STR_LEN];
     char                         key_str[MAX_KEY_STR_LEN];
     sx_ip_prefix_t               ip_prefix;
-    sx_router_id_t               vrid;
+    sx_router_id_t               vrid = DEFAULT_VRID;
     sx_uc_route_data_t           route_data;
     bool                         next_hop_id_found = false;
 
@@ -311,7 +323,7 @@ static sai_status_t mlnx_remove_route(_In_ const sai_unicast_route_entry_t* unic
     sx_status_t    status;
     sx_ip_prefix_t ip_prefix;
     char           key_str[MAX_KEY_STR_LEN];
-    sx_router_id_t vrid;
+    sx_router_id_t vrid = DEFAULT_VRID;
 
     SX_LOG_ENTER();
 
@@ -530,9 +542,13 @@ static sai_status_t mlnx_route_next_hop_id_get(_In_ const sai_object_key_t   *ke
         else {
             return SAI_STATUS_NOT_IMPLEMENTED;
         }
+    } else if (SX_UC_ROUTE_TYPE_IP2ME == route_get_entry.route_data.type) {
+        if (SAI_STATUS_SUCCESS != (status = mlnx_create_object(SAI_OBJECT_TYPE_PORT, CPU_PORT, NULL, &value->oid))) {
+            return status;
+        }
     } else {
-        SX_LOG_ERR("Can't get next hop ID for IP2ME/directly reachable route %u\n", route_get_entry.route_data.type);
-        return SAI_STATUS_INVALID_ATTRIBUTE_0 + attr_index;
+        SX_LOG_ERR("Unexpected sx route type %u\n", route_get_entry.route_data.type);
+        return SAI_STATUS_FAILURE;
     }
 
     SX_LOG_EXIT();

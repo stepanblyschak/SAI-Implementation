@@ -10,7 +10,7 @@ Not all the APIs that are defined were fully implemented in this release. Missin
 
 The code was tested to work on X86, at Beta level.
 No testing was done on PPC.
-The code compiles with, and was tested with, SDK version 4.2.1000.
+The code compiles with, and was tested with, SDK version 4.2.2100.
 
 As a precondition to running SAI initialize switch, SDK must not be running (If it's running, terminate it with dvs_stop.sh). 
 The application must provide one key/value pair on profile services, "config_file=/usr/share/sai_2700.xml" / "config_file=/usr/share/sai_2410.xml", depending on system type.

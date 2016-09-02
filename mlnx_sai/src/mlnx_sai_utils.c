@@ -117,7 +117,7 @@ sai_status_t sdk_to_sai(sx_status_t status)
         return SAI_STATUS_FAILURE;
 
     case SX_STATUS_ENTRY_ALREADY_BOUND:
-        return SAI_STATUS_FAILURE;
+        return SAI_STATUS_OBJECT_IN_USE;
 
     case SX_STATUS_WRONG_POLICER_TYPE:
         return SAI_STATUS_FAILURE;
@@ -188,6 +188,60 @@ static sai_status_t find_functionality_attrib_index(_In_ const sai_attr_id_t    
     return SAI_STATUS_ITEM_NOT_FOUND;
 }
 
+sai_status_t check_port_type_attr(const sai_object_id_t *ports,
+                                  uint32_t               count,
+                                  attr_port_type_check_t check,
+                                  sai_attr_id_t          attr_id,
+                                  uint32_t               idx)
+{
+    mlnx_port_config_t *port;
+    uint32_t            ii;
+
+    if (!ports) {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    for (ii = 0; ii < count; ii++) {
+        sai_status_t     status;
+        sai_object_id_t  obj_id = ports[ii];
+        sx_port_log_id_t log_id;
+
+        if (obj_id == SAI_NULL_OBJECT_ID) {
+            continue;
+        }
+
+        status = mlnx_object_to_log_port(obj_id, &log_id);
+        if (SAI_ERR(status)) {
+            return status;
+        }
+        if (log_id == CPU_PORT) {
+            continue;
+        }
+
+        status = mlnx_port_by_obj_id(obj_id, &port);
+        if (SAI_ERR(status)) {
+            goto err;
+        }
+
+        if (!(check & ATTR_PORT_IS_LAG_ENABLED) && mlnx_port_is_lag(port)) {
+            SX_LOG_ERR("LAG object id %" PRIx64 " is not supported by attr id %u\n",
+                       obj_id, attr_id);
+
+            goto err;
+        }
+        if (!(check & ATTR_PORT_IS_IN_LAG_ENABLED) && mlnx_port_is_lag_member(port)) {
+            SX_LOG_ERR("Port LAG member object id %" PRIx64 " is not supported by attr id %u\n",
+                       obj_id, attr_id);
+
+            goto err;
+        }
+    }
+
+    return SAI_STATUS_SUCCESS;
+
+err:
+    return SAI_STATUS_INVALID_PORT_NUMBER;
+}
 
 sai_status_t check_attribs_metadata(_In_ uint32_t                            attr_count,
                                     _In_ const sai_attribute_t              *attr_list,
@@ -312,10 +366,6 @@ sai_status_t check_attribs_metadata(_In_ uint32_t                            att
              (NULL == attr_list[ii].value.u32list.list)) ||
             ((SAI_ATTR_VAL_TYPE_S32LIST == functionality_attr[index].type) &&
              (NULL == attr_list[ii].value.s32list.list)) ||
-            ((SAI_ATTR_VAL_TYPE_VLANPORTLIST == functionality_attr[index].type) &&
-             (NULL == attr_list[ii].value.vlanportlist.list)) ||
-            ((SAI_ATTR_VAL_TYPE_PORTBREAKOUT == functionality_attr[index].type) &&
-             (NULL == attr_list[ii].value.portbreakout.port_list.list)) ||
             ((SAI_ATTR_VAL_TYPE_VLANLIST == functionality_attr[index].type) &&
              (NULL == attr_list[ii].value.vlanlist.list)) ||
             ((SAI_ATTR_VAL_TYPE_ACLFIELD_OBJLIST == functionality_attr[index].type) &&
@@ -328,6 +378,8 @@ sai_status_t check_attribs_metadata(_In_ uint32_t                            att
              (NULL == attr_list[ii].value.aclaction.parameter.objlist.list)) ||
             ((SAI_ATTR_VAL_TYPE_TUNNELMAP == functionality_attr[index].type) &&
              (NULL == attr_list[ii].value.tunnelmap.list)) ||
+            ((SAI_ATTR_VAL_TYPE_ACLCAPABILITY == functionality_attr[index].type) &&
+             (NULL == attr_list[ii].value.aclcapability.action_list.list)) ||
             ((SAI_ATTR_VAL_TYPE_QOSMAP == functionality_attr[index].type) &&
              (NULL == attr_list[ii].value.qosmap.list))) {
             SX_LOG_ERR("Null list attribute %s at index %d\n",
@@ -396,7 +448,8 @@ static sai_status_t set_dispatch_attrib_handler(_In_ const sai_attribute_t      
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    assert(SAI_STATUS_SUCCESS == find_functionality_attrib_index(attr->id, functionality_attr, &index));
+    err = find_functionality_attrib_index(attr->id, functionality_attr, &index);
+    assert(SAI_STATUS_SUCCESS == err);
 
     if (!functionality_vendor_attr[index].setter) {
         SX_LOG_ERR("Attribute %s not implemented on set and defined incorrectly\n",
@@ -446,7 +499,8 @@ static sai_status_t get_dispatch_attribs_handler(_In_ uint32_t                  
     memset(&cache, 0, sizeof(cache));
 
     for (ii = 0; ii < attr_count; ii++) {
-        assert(SAI_STATUS_SUCCESS == find_functionality_attrib_index(attr_list[ii].id, functionality_attr, &index));
+        status = find_functionality_attrib_index(attr_list[ii].id, functionality_attr, &index);
+        assert(SAI_STATUS_SUCCESS == status);
 
         if (!functionality_vendor_attr[index].getter) {
             SX_LOG_ERR("Attribute %s not implemented on get and defined incorrectly\n",
@@ -571,7 +625,7 @@ sai_status_t sai_get_attributes(_In_ const sai_object_key_t             *key,
 static sai_status_t sai_ipv4_to_str(_In_ sai_ip4_t value,
                                     _In_ uint32_t  max_length,
                                     _Out_ char    *value_str,
-                                    _Out_ int     *chars_written)
+                                    _Out_opt_ int *chars_written)
 {
     inet_ntop(AF_INET, &value, value_str, max_length);
 
@@ -585,7 +639,7 @@ static sai_status_t sai_ipv4_to_str(_In_ sai_ip4_t value,
 static sai_status_t sai_ipv6_to_str(_In_ sai_ip6_t value,
                                     _In_ uint32_t  max_length,
                                     _Out_ char    *value_str,
-                                    _Out_ int     *chars_written)
+                                    _Out_opt_ int *chars_written)
 {
     inet_ntop(AF_INET6, value, value_str, max_length);
 
@@ -599,7 +653,7 @@ static sai_status_t sai_ipv6_to_str(_In_ sai_ip6_t value,
 sai_status_t sai_ipaddr_to_str(_In_ sai_ip_address_t value,
                                _In_ uint32_t         max_length,
                                _Out_ char           *value_str,
-                               _Out_ int            *chars_written)
+                               _Out_opt_ int        *chars_written)
 {
     int res;
 
@@ -653,6 +707,7 @@ sai_status_t sai_ipprefix_to_str(_In_ sai_ip_prefix_t value, _In_ uint32_t max_l
     return SAI_STATUS_SUCCESS;
 }
 
+_Success_(return == SAI_STATUS_SUCCESS)
 sai_status_t mlnx_translate_sai_ip_address_to_sdk(_In_ const sai_ip_address_t *sai_addr, _Out_ sx_ip_addr_t *sdk_addr)
 {
     int       ii;
@@ -679,6 +734,7 @@ sai_status_t mlnx_translate_sai_ip_address_to_sdk(_In_ const sai_ip_address_t *s
     return SAI_STATUS_SUCCESS;
 }
 
+_Success_(return == SAI_STATUS_SUCCESS)
 sai_status_t mlnx_translate_sdk_ip_address_to_sai(_In_ const sx_ip_addr_t *sdk_addr, _Out_ sai_ip_address_t *sai_addr)
 {
     int       ii;
@@ -703,6 +759,7 @@ sai_status_t mlnx_translate_sdk_ip_address_to_sai(_In_ const sx_ip_addr_t *sdk_a
     return SAI_STATUS_SUCCESS;
 }
 
+_Success_(return == SAI_STATUS_SUCCESS)
 sai_status_t mlnx_translate_sai_ip_prefix_to_sdk(_In_ const sai_ip_prefix_t *sai_prefix,
                                                  _Out_ sx_ip_prefix_t       *sdk_prefix)
 {
@@ -734,6 +791,7 @@ sai_status_t mlnx_translate_sai_ip_prefix_to_sdk(_In_ const sai_ip_prefix_t *sai
     return SAI_STATUS_SUCCESS;
 }
 
+_Success_(return == SAI_STATUS_SUCCESS)
 sai_status_t mlnx_translate_sdk_ip_prefix_to_sai(_In_ const sx_ip_prefix_t *sdk_prefix,
                                                  _Out_ sai_ip_prefix_t     *sai_prefix)
 {
@@ -1030,14 +1088,17 @@ sai_status_t sai_value_to_str(_In_ sai_attribute_value_t      value,
     case SAI_ATTR_VAL_TYPE_U32LIST:
     case SAI_ATTR_VAL_TYPE_S32LIST:
     case SAI_ATTR_VAL_TYPE_VLANLIST:
-    case SAI_ATTR_VAL_TYPE_VLANPORTLIST:
-    case SAI_ATTR_VAL_TYPE_PORTBREAKOUT:
     case SAI_ATTR_VAL_TYPE_ACLFIELD_OBJLIST:
     case SAI_ATTR_VAL_TYPE_ACLFIELD_U8LIST:
     case SAI_ATTR_VAL_TYPE_ACLACTION_OBJLIST:
     case SAI_ATTR_VAL_TYPE_TUNNELMAP:
-        if (SAI_ATTR_VAL_TYPE_PORTBREAKOUT == type) {
-            pos += snprintf(value_str, max_length, "breakout mode %d.", value.portbreakout.breakout_mode);
+    case SAI_ATTR_VAL_TYPE_ACLCAPABILITY:
+        if (SAI_ATTR_VAL_TYPE_ACLCAPABILITY == type) {
+            pos += snprintf(value_str,
+                            max_length,
+                            "%d,%d.",
+                            value.aclcapability.stage,
+                            value.aclcapability.is_action_list_mandatory);
         }
         if ((SAI_ATTR_VAL_TYPE_ACLFIELD_OBJLIST == type) ||
             (SAI_ATTR_VAL_TYPE_ACLFIELD_U8LIST == type)) {
@@ -1051,19 +1112,18 @@ sai_status_t sai_value_to_str(_In_ sai_attribute_value_t      value,
         }
 
         count = (SAI_ATTR_VAL_TYPE_OBJLIST == type) ? value.objlist.count :
-                (SAI_ATTR_VAL_TYPE_U8LIST == type) ? value.u8list.count :
-                (SAI_ATTR_VAL_TYPE_S8LIST == type) ? value.s8list.count :
-                (SAI_ATTR_VAL_TYPE_U16LIST == type) ? value.u16list.count :
-                (SAI_ATTR_VAL_TYPE_S16LIST == type) ? value.s16list.count :
-                (SAI_ATTR_VAL_TYPE_U32LIST == type) ? value.u32list.count :
-                (SAI_ATTR_VAL_TYPE_S32LIST == type) ? value.s32list.count :
-                (SAI_ATTR_VAL_TYPE_VLANLIST == type) ? value.vlanlist.count :
-                (SAI_ATTR_VAL_TYPE_VLANPORTLIST == type) ? value.vlanportlist.count :
-                (SAI_ATTR_VAL_TYPE_ACLFIELD_OBJLIST == type) ? value.aclfield.data.objlist.count :
-                (SAI_ATTR_VAL_TYPE_ACLFIELD_U8LIST == type) ? value.aclfield.data.u8list.count :
-                (SAI_ATTR_VAL_TYPE_ACLACTION_OBJLIST == type) ? value.aclaction.parameter.objlist.count :
-                (SAI_ATTR_VAL_TYPE_TUNNELMAP == type) ? value.tunnelmap.count :
-                value.portbreakout.port_list.count;
+            (SAI_ATTR_VAL_TYPE_U8LIST == type) ? value.u8list.count :
+            (SAI_ATTR_VAL_TYPE_S8LIST == type) ? value.s8list.count :
+            (SAI_ATTR_VAL_TYPE_U16LIST == type) ? value.u16list.count :
+            (SAI_ATTR_VAL_TYPE_S16LIST == type) ? value.s16list.count :
+            (SAI_ATTR_VAL_TYPE_U32LIST == type) ? value.u32list.count :
+            (SAI_ATTR_VAL_TYPE_S32LIST == type) ? value.s32list.count :
+            (SAI_ATTR_VAL_TYPE_VLANLIST == type) ? value.vlanlist.count :
+            (SAI_ATTR_VAL_TYPE_ACLFIELD_OBJLIST == type) ? value.aclfield.data.objlist.count :
+            (SAI_ATTR_VAL_TYPE_ACLFIELD_U8LIST == type) ? value.aclfield.data.u8list.count :
+            (SAI_ATTR_VAL_TYPE_ACLACTION_OBJLIST == type) ? value.aclaction.parameter.objlist.count :
+            (SAI_ATTR_VAL_TYPE_TUNNELMAP == type) ? value.tunnelmap.count :
+            value.aclcapability.action_list.count;
         pos += snprintf(value_str + pos, max_length - pos, "%u : [", count);
         if (pos > max_length) {
             return SAI_STATUS_SUCCESS;
@@ -1086,13 +1146,6 @@ sai_status_t sai_value_to_str(_In_ sai_attribute_value_t      value,
                 pos += snprintf(value_str + pos, max_length - pos, " %d", value.s32list.list[ii]);
             } else if (SAI_ATTR_VAL_TYPE_VLANLIST == type) {
                 pos += snprintf(value_str + pos, max_length - pos, " %u", value.vlanlist.list[ii]);
-            } else if (SAI_ATTR_VAL_TYPE_VLANPORTLIST == type) {
-                pos += snprintf(value_str + pos,
-                                max_length - pos,
-                                " %" PRIx64 "%s",
-                                value.vlanportlist.list[ii].port_id,
-                                (SAI_VLAN_PORT_UNTAGGED == value.vlanportlist.list[ii].tagging_mode) ? "U" :
-                                (SAI_VLAN_PORT_TAGGED == value.vlanportlist.list[ii].tagging_mode) ? "T" : "PT");
             } else if (SAI_ATTR_VAL_TYPE_ACLFIELD_OBJLIST == type) {
                 pos += snprintf(value_str + pos, max_length - pos, " %" PRIx64, value.aclfield.data.objlist.list[ii]);
             } else if (SAI_ATTR_VAL_TYPE_ACLFIELD_U8LIST == type) {
@@ -1109,9 +1162,9 @@ sai_status_t sai_value_to_str(_In_ sai_attribute_value_t      value,
                              value.tunnelmap.list[ii].key.vlan_id, value.tunnelmap.list[ii].key.vni_id,
                              value.tunnelmap.list[ii].value.oecn, value.tunnelmap.list[ii].value.uecn,
                              value.tunnelmap.list[ii].value.vlan_id, value.tunnelmap.list[ii].value.vni_id);
-            } else {
-                pos += snprintf(value_str + pos, max_length - pos, " %" PRIx64, value.portbreakout.port_list.list[ii]);
-            }
+            } else if (SAI_ATTR_VAL_TYPE_ACLCAPABILITY == type) {
+                pos += snprintf(value_str + pos, max_length - pos, " %d", value.aclcapability.action_list.list[ii]);
+            } 
             if (pos > max_length) {
                 return SAI_STATUS_SUCCESS;
             }
@@ -1308,8 +1361,9 @@ sai_status_t sai_attr_list_to_str(_In_ uint32_t                     attr_count,
                                   _In_ uint32_t                     max_length,
                                   _Out_ char                       *list_str)
 {
-    uint32_t ii, index, pos = 0;
-    char     value_str[MAX_VALUE_STR_LEN];
+    uint32_t     ii, index, pos = 0;
+    char         value_str[MAX_VALUE_STR_LEN];
+    sai_status_t status = SAI_STATUS_SUCCESS;
 
     if ((attr_count) && (NULL == attr_list)) {
         SX_LOG_ERR("NULL value attr list\n");
@@ -1332,7 +1386,8 @@ sai_status_t sai_attr_list_to_str(_In_ uint32_t                     attr_count,
     }
 
     for (ii = 0; ii < attr_count; ii++) {
-        assert(SAI_STATUS_SUCCESS == find_functionality_attrib_index(attr_list[ii].id, functionality_attr, &index));
+        status = find_functionality_attrib_index(attr_list[ii].id, functionality_attr, &index);
+        assert(SAI_STATUS_SUCCESS == status);
 
         sai_value_to_str(attr_list[ii].value, functionality_attr[index].type, MAX_VALUE_STR_LEN, value_str);
         pos += snprintf(list_str + pos,
@@ -1346,7 +1401,7 @@ sai_status_t sai_attr_list_to_str(_In_ uint32_t                     attr_count,
         }
     }
 
-    return SAI_STATUS_SUCCESS;
+    return status;
 }
 
 sai_status_t mlnx_translate_sai_trap_action_to_sdk(sai_int32_t       action,
@@ -1504,7 +1559,35 @@ sai_status_t mlnx_create_object(sai_object_type_t type,
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t mlnx_create_queue(_In_ sx_port_log_id_t port_id, _In_ uint8_t index, _Out_ sai_object_id_t *id)
+sai_status_t mlnx_object_to_log_port(sai_object_id_t object_id, sx_port_log_id_t *port_id)
+{
+    sai_object_type_t type = sai_object_type_query(object_id);
+
+    if ((type != SAI_OBJECT_TYPE_PORT) && (type != SAI_OBJECT_TYPE_LAG)) {
+        SX_LOG_ERR("Object type %s is not LAG nor Port\n", SAI_TYPE_STR(type));
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    return mlnx_object_to_type(object_id, type, port_id, NULL);
+}
+
+sai_status_t mlnx_log_port_to_object(sx_port_log_id_t port_id, sai_object_id_t *object_id)
+{
+    sai_object_type_t type;
+
+    if (SX_PORT_TYPE_ID_GET(port_id) == SX_PORT_TYPE_NETWORK) {
+        type = SAI_OBJECT_TYPE_PORT;
+    } else if (SX_PORT_TYPE_ID_GET(port_id) == SX_PORT_TYPE_LAG) {
+        type = SAI_OBJECT_TYPE_LAG;
+    } else {
+        SX_LOG_ERR("Logical port id %x is not LAG nor Port\n", port_id);
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    return mlnx_create_object(type, port_id, NULL, object_id);
+}
+
+sai_status_t mlnx_create_queue_object(_In_ sx_port_log_id_t port_id, _In_ uint8_t index, _Out_ sai_object_id_t *id)
 {
     uint8_t ext_data[EXTENDED_DATA_SIZE];
 
@@ -1513,6 +1596,7 @@ sai_status_t mlnx_create_queue(_In_ sx_port_log_id_t port_id, _In_ uint8_t index
     return mlnx_create_object(SAI_OBJECT_TYPE_QUEUE, port_id, ext_data, id);
 }
 
+_Success_(return == SAI_STATUS_SUCCESS)
 sai_status_t mlnx_queue_parse_id(_In_ sai_object_id_t id, _Out_ sx_port_log_id_t *port_id, _Out_ uint8_t *queue_index)
 {
     uint8_t      ext_data[EXTENDED_DATA_SIZE];
@@ -1543,6 +1627,7 @@ sai_status_t mlnx_create_sched_group(_In_ sx_port_log_id_t  port_id,
     return mlnx_create_object(SAI_OBJECT_TYPE_SCHEDULER_GROUP, port_id, ext_data, id);
 }
 
+_Success_(return == SAI_STATUS_SUCCESS)
 sai_status_t mlnx_sched_group_parse_id(_In_ sai_object_id_t    id,
                                        _Out_ sx_port_log_id_t *port_id_ptr,
                                        _Out_ uint8_t          *level_ptr,
@@ -1656,9 +1741,9 @@ sai_status_t mlnx_fill_vlanlist(sai_vlan_id_t *data, uint32_t count, sai_vlan_li
     return mlnx_fill_genericlist(sizeof(sai_vlan_id_t), (void*)data, count, (void*)list);
 }
 
-sai_status_t mlnx_fill_vlanportlist(sai_vlan_port_t *data, uint32_t count, sai_vlan_port_list_t *list)
+sai_status_t mlnx_fill_tunnelmaplist(sai_tunnel_map_t *data, uint32_t count, sai_tunnel_map_list_t *list)
 {
-    return mlnx_fill_genericlist(sizeof(sai_vlan_port_t), (void*)data, count, (void*)list);
+    return mlnx_fill_genericlist(sizeof(sai_tunnel_map_t), (void*)data, count, (void*)list);
 }
 
 bool mlnx_route_entries_are_equal(_In_ const sai_unicast_route_entry_t *u1, _In_ const sai_unicast_route_entry_t *u2)

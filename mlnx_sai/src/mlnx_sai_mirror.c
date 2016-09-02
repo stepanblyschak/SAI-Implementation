@@ -2048,7 +2048,8 @@ static sai_status_t mlnx_create_mirror_session(_Out_ sai_object_id_t      *sai_m
     const sai_attribute_value_t *mirror_gre_protocol_type = NULL;
     sai_status_t                 status                   = SAI_STATUS_FAILURE, status_truncate_size =
         SAI_STATUS_FAILURE;
-    sai_status_t             status_tc = SAI_STATUS_FAILURE, status_ttl = SAI_STATUS_FAILURE;
+    sai_status_t             status_tc     = SAI_STATUS_FAILURE, status_ttl = SAI_STATUS_FAILURE;
+    sai_status_t             status_remove = SAI_STATUS_FAILURE;
     sx_span_session_params_t sdk_mirror_obj_params;
     sx_span_session_id_t     sdk_mirror_obj_id = 0;
 
@@ -2137,6 +2138,15 @@ static sai_status_t mlnx_create_mirror_session(_Out_ sai_object_id_t      *sai_m
 
     if (SAI_STATUS_SUCCESS !=
         (status = mlnx_add_mirror_analyzer_port(sdk_mirror_obj_id, mirror_monitor_port->oid))) {
+        if (SAI_STATUS_SUCCESS !=
+            (status_remove =
+                 sdk_to_sai(sx_api_span_session_set(gh_sdk, SX_ACCESS_CMD_DESTROY, &sdk_mirror_obj_params,
+                                                    &sdk_mirror_obj_id)))) {
+            SX_LOG_ERR("Error destorying mirror session, sdk mirror obj id: %d\n", sdk_mirror_obj_id);
+            SX_LOG_EXIT();
+            return status_remove;
+        }
+
         SX_LOG_ERR("Error adding mirror analyzer port %" PRIx64 " on sdk mirror obj id %d\n",
                    mirror_monitor_port->oid,
                    sdk_mirror_obj_id);

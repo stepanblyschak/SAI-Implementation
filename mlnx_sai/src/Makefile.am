@@ -13,11 +13,16 @@ endif
 
 CFLAGS = @CFLAGS@ $(CFLAGS_SAI_INTERFACE_COMMON) $(DBGFLAGS)
 
+if CONFIG_SYSLOG
+CFLAGS += -DCONFIG_SYSLOG
+endif
+
 lib_LTLIBRARIES = libsai.la
 
 dist_data_DATA = sai_1710.xml \
 				 sai_2700.xml \
-				 sai_2410.xml
+				 sai_2410.xml \
+				 sai_2100.xml
 				 
 libsai_la_DEPENDENCIES =
 
@@ -46,6 +51,7 @@ libsai_la_SOURCES = \
                        mlnx_sai_scheduler_group.c \
                        mlnx_sai_mirror.c \
                        mlnx_sai_buffer.c \
+                       mlnx_sai_tunnel.c \
                        mlnx_sai_samplepacket.c \
                        mlnx_sai_object.c
 
@@ -77,18 +83,18 @@ libsai_apiinclude_HEADERS = \
 	$(top_srcdir)/inc/sai/sairouterintf.h \
 	$(top_srcdir)/inc/sai/saihostintf.h \
 	$(top_srcdir)/inc/sai/sailag.h \
-    $(top_srcdir)/inc/sai/saimirror.h \
-    $(top_srcdir)/inc/sai/saisamplepacket.h \
+        $(top_srcdir)/inc/sai/saimirror.h \
+        $(top_srcdir)/inc/sai/saisamplepacket.h \
 	$(top_srcdir)/inc/sai/saistp.h \
-    $(top_srcdir)/inc/sai/saipolicer.h \
-    $(top_srcdir)/inc/sai/saiqosmaps.h \
-    $(top_srcdir)/inc/sai/saiqueue.h \
-    $(top_srcdir)/inc/sai/saischeduler.h \
-    $(top_srcdir)/inc/sai/saischedulergroup.h \
-    $(top_srcdir)/inc/sai/saiwred.h \
+        $(top_srcdir)/inc/sai/saipolicer.h \
+        $(top_srcdir)/inc/sai/saiqosmaps.h \
+        $(top_srcdir)/inc/sai/saiqueue.h \
+        $(top_srcdir)/inc/sai/saischeduler.h \
+        $(top_srcdir)/inc/sai/saischedulergroup.h \
+        $(top_srcdir)/inc/sai/saiwred.h \
 	$(top_srcdir)/inc/sai/saibuffer.h \
-    $(top_srcdir)/inc/sai/saihash.h \
-    $(top_srcdir)/inc/sai/saiudf.h \
+        $(top_srcdir)/inc/sai/saihash.h \
+        $(top_srcdir)/inc/sai/saiudf.h \
     $(top_srcdir)/inc/sai/saitunnel.h \
     $(top_srcdir)/inc/sai/saiobject.h \
         \

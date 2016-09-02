@@ -42,22 +42,28 @@
  */
 typedef enum _sai_route_attr_t
 {
+    
+    SAI_ROUTE_ATTR_START,         
+    
     /** READ-WRITE */
 
     /** Packet action [sai_packet_action_t]
        (default to SAI_PACKET_ACTION_FORWARD) */
-    SAI_ROUTE_ATTR_PACKET_ACTION,
+    SAI_ROUTE_ATTR_PACKET_ACTION = SAI_ROUTE_ATTR_START,
 
     /** Packet priority for trap/log actions [uint8_t]
        (default to 0) */
     SAI_ROUTE_ATTR_TRAP_PRIORITY,
 
-    /** Next hop or next hop group id for the packet or a router interface
-     * in case of directly reachable route [sai_object_id_t]
+    /** Next hop or next hop group id for the packet, or a router interface
+     * in case of directly reachable route, or the CPU port in case of
+     * IP2ME route [sai_object_id_t]
      * The next hop id can be a generic next hop object, such as next hop,
      * next hop group.
      * Directly reachable routes are the IP subnets that are directly attached to the router.
-     * For such routes, fill the router interface id to which the subnet is attached */
+     * For such routes, fill the router interface id to which the subnet is attached. 
+     * IP2ME route adds a local router IP address. For such routes, fill the CPU port
+     * (SAI_SWITCH_ATTR_CPU_PORT). */
     SAI_ROUTE_ATTR_NEXT_HOP_ID,
 
     /** User based Meta Data
@@ -65,8 +71,14 @@ typedef enum _sai_route_attr_t
      * Value Range SAI_SWITCH_ATTR_ROUTE_USER_META_DATA_RANGE */
     SAI_ROUTE_ATTR_META_DATA,
 
+    SAI_ROUTE_ATTR_END,
+    
     /** Custom range base value */
-    SAI_ROUTE_ATTR_CUSTOM_RANGE_BASE  = 0x10000000
+    SAI_ROUTE_ATTR_CUSTOM_RANGE_START = 0x10000000,
+
+    /* --*/
+    SAI_ROUTE_ATTR_CUSTOM_RANGE_END
+
 
 } sai_route_attr_t;
 

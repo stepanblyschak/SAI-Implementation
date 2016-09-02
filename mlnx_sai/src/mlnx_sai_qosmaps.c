@@ -379,7 +379,7 @@ sai_status_t mlnx_qos_map_set_default(_Inout_ mlnx_qos_map_t *qos_map)
 {
     sai_qos_map_type_t qos_map_type = qos_map->type;
     bool               is_used      = qos_map->is_used;
-    uint32_t           ii;
+    uint32_t           ii, jj;
 
     memset(qos_map, 0, sizeof(*qos_map));
     qos_map->type    = qos_map_type;
@@ -391,7 +391,10 @@ sai_status_t mlnx_qos_map_set_default(_Inout_ mlnx_qos_map_t *qos_map)
         qos_map->count = COS_PCP_MAX_NUM + 1;
 
         for (ii = 0; ii < qos_map->count; ii++) {
-            qos_map->from.pcp_dei[ii].pcp = ii;
+            qos_map->from.pcp_dei[ii].pcp                  = ii;
+            qos_map->from.pcp_dei[ii].dei                  = 0;
+            qos_map->from.pcp_dei[ii + qos_map->count].pcp = ii;
+            qos_map->from.pcp_dei[ii + qos_map->count].dei = 1;
         }
     } else if ((qos_map->type == SAI_QOS_MAP_DSCP_TO_TC) ||
                (qos_map->type == SAI_QOS_MAP_DSCP_TO_COLOR)) {
@@ -417,6 +420,26 @@ sai_status_t mlnx_qos_map_set_default(_Inout_ mlnx_qos_map_t *qos_map)
 
         for (ii = 0; ii < qos_map->count; ii++) {
             qos_map->from.pfc[ii] = ii;
+        }
+    } else if ((qos_map->type == SAI_QOS_MAP_TC_AND_COLOR_TO_DSCP) ||
+               (qos_map->type == SAI_QOS_MAP_TC_AND_COLOR_TO_DOT1P)) {
+        uint32_t index = 0;
+
+        qos_map->count = (MAX_PORT_PRIO + 1) * (MLNX_QOS_MAP_COLOR_MAX + 1);
+
+        for (ii = 0; ii < MAX_PORT_PRIO + 1; ii++) {
+            for (jj = 0; jj < MLNX_QOS_MAP_COLOR_MAX + 1; jj++) {
+                qos_map->from.prio_color[index].priority = ii;
+                qos_map->from.prio_color[index].color    = jj;
+
+                if (qos_map->type == SAI_QOS_MAP_TC_AND_COLOR_TO_DOT1P) {
+                    qos_map->to.pcp_dei[index].pcp = (ii <= MAX_PCP_PRIO) ? ii : MAX_PCP_PRIO;
+                } else if (qos_map->type == SAI_QOS_MAP_TC_AND_COLOR_TO_DSCP) {
+                    qos_map->to.dscp[index] = (ii <= MAX_PCP_PRIO) ? ii * 8 : SX_COS_PORT_DSCP_MAX;
+                }
+
+                index++;
+            }
         }
     }
 
@@ -656,7 +679,7 @@ static sai_status_t mlnx_qos_map_list_set(_In_ const sai_object_key_t      *key,
         goto out;
     }
 
-    mlnx_port_foreach(port, port_idx) {
+    mlnx_port_not_in_lag_foreach(port, port_idx) {
         if (port->qos_maps[qos_map->type] != qos_map_idx) {
             continue;
         }
@@ -890,7 +913,8 @@ static sai_status_t mlnx_get_qos_map_attribute(_In_ sai_object_id_t     qos_map_
  * @return SAI_STATUS_SUCCESS on success
  *        Failure status code on error
  */
-sai_status_t mlnx_qos_map_get_by_id(_In_ sai_object_id_t obj_id, _Inout_ mlnx_qos_map_t **qos_map)
+_Success_(return == SAI_STATUS_SUCCESS)
+sai_status_t mlnx_qos_map_get_by_id(_In_ sai_object_id_t obj_id, _Out_ mlnx_qos_map_t **qos_map)
 {
     sai_status_t status;
     uint32_t     id;

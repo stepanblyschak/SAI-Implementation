@@ -191,6 +191,9 @@
     <ClCompile Include="src\mlnx_sai_samplepacket.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\mlnx_sai_tunnel.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="src\mlnx_sai_object.c">
       <Filter>Source Files</Filter>
     </ClCompile>

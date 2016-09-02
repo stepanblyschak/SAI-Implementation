@@ -40,8 +40,6 @@ static const sai_attribute_entry_t host_interface_attribs[] = {
 static const sai_attribute_entry_t trap_group_attribs[] = {
     { SAI_HOSTIF_TRAP_GROUP_ATTR_ADMIN_STATE, false, true, true, true,
       "Trap group admin mode", SAI_ATTR_VAL_TYPE_BOOL },
-    { SAI_HOSTIF_TRAP_GROUP_ATTR_PRIO, true, true, false, true,
-      "Trap group priority", SAI_ATTR_VAL_TYPE_U32 },
     { SAI_HOSTIF_TRAP_GROUP_ATTR_QUEUE, false, true, true, true,
       "Trap group queue", SAI_ATTR_VAL_TYPE_U32 },
     { SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER, false, true, true, true,
@@ -115,11 +113,14 @@ static sai_status_t mlnx_trap_group_admin_get(_In_ const sai_object_key_t   *key
 static sai_status_t mlnx_trap_group_admin_set(_In_ const sai_object_key_t      *key,
                                               _In_ const sai_attribute_value_t *value,
                                               void                             *arg);
-static sai_status_t mlnx_trap_group_prio_get(_In_ const sai_object_key_t   *key,
-                                             _Inout_ sai_attribute_value_t *value,
-                                             _In_ uint32_t                  attr_index,
-                                             _Inout_ vendor_cache_t        *cache,
-                                             void                          *arg);
+static sai_status_t mlnx_trap_group_queue_set(_In_ const sai_object_key_t      *key,
+                                              _In_ const sai_attribute_value_t *value,
+                                              void                             *arg);
+static sai_status_t mlnx_trap_group_queue_get(_In_ const sai_object_key_t   *key,
+                                              _Inout_ sai_attribute_value_t *value,
+                                              _In_ uint32_t                  attr_index,
+                                              _Inout_ vendor_cache_t        *cache,
+                                              void                          *arg);
 static sai_status_t mlnx_trap_channel_get(_In_ const sai_object_key_t   *key,
                                           _Inout_ sai_attribute_value_t *value,
                                           _In_ uint32_t                  attr_index,
@@ -185,16 +186,11 @@ static const sai_vendor_attribute_entry_t trap_group_vendor_attribs[] = {
       { true, false, true, true },
       mlnx_trap_group_admin_get, NULL,
       mlnx_trap_group_admin_set, NULL },
-    { SAI_HOSTIF_TRAP_GROUP_ATTR_PRIO,
-      { true, false, false, true },
-      { true, false, false, true },
-      mlnx_trap_group_prio_get, NULL,
-      NULL, NULL },
     { SAI_HOSTIF_TRAP_GROUP_ATTR_QUEUE,
-      { false, false, false, false },
       { true, false, true, true },
-      NULL, NULL,
-      NULL, NULL },
+      { true, false, true, true },
+      mlnx_trap_group_queue_get, NULL,
+      mlnx_trap_group_queue_set, NULL },
     { SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER,
       { true, false, true, true},
       { true, false, true, true},
@@ -307,13 +303,14 @@ const mlnx_trap_info_t                    mlnx_traps_info[] = {
     /* TODO : Allow forward on PIM */
     { SAI_HOSTIF_TRAP_ID_PIM, 1, { SX_TRAP_ID_PIM }, SAI_PACKET_ACTION_DROP, "PIM", MLNX_TRAP_TYPE_REGULAR },
     { SAI_HOSTIF_TRAP_ID_VRRP, 1, { SX_TRAP_ID_VRRP }, SAI_PACKET_ACTION_FORWARD, "VRRP", MLNX_TRAP_TYPE_REGULAR },
-    { SAI_HOSTIF_TRAP_ID_BGP, 0, { 0 }, SAI_PACKET_ACTION_FORWARD, "BGP", MLNX_TRAP_TYPE_REGULAR },
+    { SAI_HOSTIF_TRAP_ID_BGP, 1, { SX_TRAP_ID_IPV4_BGP }, SAI_PACKET_ACTION_FORWARD, "BGP", MLNX_TRAP_TYPE_REGULAR },
     { SAI_HOSTIF_TRAP_ID_DHCPV6, 1, { SX_TRAP_ID_IPV6_DHCP }, SAI_PACKET_ACTION_FORWARD, "DHCPv6",
       MLNX_TRAP_TYPE_REGULAR },
     { SAI_HOSTIF_TRAP_ID_OSPFV6, 1, { SX_TRAP_ID_IPV6_OSPF }, SAI_PACKET_ACTION_FORWARD, "OSPFv6",
       MLNX_TRAP_TYPE_REGULAR },
     { SAI_HOSTIF_TRAP_ID_VRRPV6, 0, { 0 }, SAI_PACKET_ACTION_FORWARD, "VRRPv6", MLNX_TRAP_TYPE_REGULAR },
-    { SAI_HOSTIF_TRAP_ID_BGPV6, 0, { 0 }, SAI_PACKET_ACTION_FORWARD, "BGPv6", MLNX_TRAP_TYPE_REGULAR },
+    { SAI_HOSTIF_TRAP_ID_BGPV6, 1, { SX_TRAP_ID_IPV6_BGP }, SAI_PACKET_ACTION_FORWARD, "BGPv6",
+      MLNX_TRAP_TYPE_REGULAR },
     { SAI_HOSTIF_TRAP_ID_IPV6_NEIGHBOR_DISCOVERY, 5,
       { SX_TRAP_ID_IPV6_ROUTER_SOLICIATION, SX_TRAP_ID_IPV6_ROUTER_ADVERTISEMENT, SX_TRAP_ID_IPV6_NEIGHBOR_SOLICIATION,
         SX_TRAP_ID_IPV6_NEIGHBOR_ADVERTISEMENT, SX_TRAP_ID_IPV6_NEIGHBOR_DIRECTION },
@@ -326,6 +323,12 @@ const mlnx_trap_info_t                    mlnx_traps_info[] = {
       "IPv6 MLD done", MLNX_TRAP_TYPE_REGULAR },
     { SAI_HOSTIF_TRAP_ID_MLD_V2_REPORT, 1, { SX_TRAP_ID_IPV6_MLD_V2_REPORT }, SAI_PACKET_ACTION_FORWARD,
       "IPv6 MLD V2 report", MLNX_TRAP_TYPE_REGULAR },
+    { SAI_HOSTIF_TRAP_ID_IP2ME, 1, { SX_TRAP_ID_IP2ME }, SAI_PACKET_ACTION_TRAP, "IP2ME",
+      MLNX_TRAP_TYPE_REGULAR },
+    { SAI_HOSTIF_TRAP_ID_SSH, 2, { SX_TRAP_ID_SSH_IPV4, SX_TRAP_ID_SSH_IPV6 }, SAI_PACKET_ACTION_TRAP, "SSH",
+      MLNX_TRAP_TYPE_REGULAR },
+    { SAI_HOSTIF_TRAP_ID_SNMP, 0, { 0 }, SAI_PACKET_ACTION_TRAP, "SNMP",
+      MLNX_TRAP_TYPE_REGULAR },
     { SAI_HOSTIF_TRAP_ID_L3_MTU_ERROR, 1, { SX_TRAP_ID_ETH_L3_MTUERROR }, SAI_PACKET_ACTION_TRAP, "MTU error",
       MLNX_TRAP_TYPE_REGULAR },
     { SAI_HOSTIF_TRAP_ID_TTL_ERROR, 1, { SX_TRAP_ID_ETH_L3_TTLERROR }, SAI_PACKET_ACTION_TRAP, "TTL error",
@@ -342,7 +345,7 @@ const mlnx_trap_info_t                    mlnx_traps_info[] = {
       { SX_TRAP_ID_L3_NEIGH_IP_BASE + SX_TRAP_PRIORITY_BEST_EFFORT, SX_TRAP_ID_L3_NEIGH_IP_BASE + SX_TRAP_PRIORITY_LOW,
         SX_TRAP_ID_L3_NEIGH_IP_BASE + SX_TRAP_PRIORITY_MED, SX_TRAP_ID_L3_NEIGH_IP_BASE + SX_TRAP_PRIORITY_HIGH },
 #else
-      ((SX_TRAP_ID_HOST_MISS_IPV4 == SX_TRAP_ID_HOST_MISS_IPV6) ? 5 : 6),
+      ((SX_TRAP_ID_HOST_MISS_IPV4 == SX_TRAP_ID_HOST_MISS_IPV6) ? 5 : 5),
       { SX_TRAP_ID_L3_NEIGH_IP_BASE + SX_TRAP_PRIORITY_BEST_EFFORT, SX_TRAP_ID_L3_NEIGH_IP_BASE + SX_TRAP_PRIORITY_LOW,
         SX_TRAP_ID_L3_NEIGH_IP_BASE + SX_TRAP_PRIORITY_MED, SX_TRAP_ID_L3_NEIGH_IP_BASE + SX_TRAP_PRIORITY_HIGH,
         SX_TRAP_ID_HOST_MISS_IPV4, SX_TRAP_ID_HOST_MISS_IPV6 },
@@ -472,8 +475,8 @@ static sai_status_t mlnx_create_host_interface(_Out_ sai_object_id_t     * hif_i
     sai_attr_list_to_str(attr_count, attr_list, host_interface_attribs, MAX_LIST_VALUE_STR_LEN, list_str);
     SX_LOG_NTC("Create host interface, %s\n", list_str);
 
-    assert(SAI_STATUS_SUCCESS ==
-           find_attrib_in_list(attr_count, attr_list, SAI_HOSTIF_ATTR_TYPE, &type, &type_index));
+    find_attrib_in_list(attr_count, attr_list, SAI_HOSTIF_ATTR_TYPE, &type, &type_index);
+    assert(SAI_STATUS_SUCCESS == status);
 
     if (SAI_HOSTIF_TYPE_NETDEV == type->s32) {
         if (SAI_STATUS_SUCCESS !=
@@ -938,12 +941,47 @@ static sai_status_t mlnx_trap_group_admin_set(_In_ const sai_object_key_t      *
     return SAI_STATUS_SUCCESS;
 }
 
-/* group priority [uint32_t] */
-static sai_status_t mlnx_trap_group_prio_get(_In_ const sai_object_key_t   *key,
-                                             _Inout_ sai_attribute_value_t *value,
-                                             _In_ uint32_t                  attr_index,
-                                             _Inout_ vendor_cache_t        *cache,
-                                             void                          *arg)
+/* cpu egress queue [uint32_t] */
+static sai_status_t mlnx_trap_group_queue_set(_In_ const sai_object_key_t      *key,
+                                              _In_ const sai_attribute_value_t *value,
+                                              void                             *arg)
+{
+    sai_status_t               status;
+    uint32_t                   group_id;
+    sx_trap_group_attributes_t trap_group_attributes;
+
+    SX_LOG_ENTER();
+
+    if (SAI_STATUS_SUCCESS !=
+        (status = mlnx_object_to_type(key->object_id, SAI_OBJECT_TYPE_TRAP_GROUP, &group_id, NULL))) {
+        SX_LOG_EXIT();
+        return status;
+    }
+
+    if (SAI_STATUS_SUCCESS != (status = sx_api_host_ifc_trap_group_get(gh_sdk, DEFAULT_ETH_SWID,
+                                                                       group_id, &trap_group_attributes))) {
+        SX_LOG_ERR("Failed to sx_api_host_ifc_trap_group_get %s\n", SX_STATUS_MSG(status));
+        return sdk_to_sai(status);
+    }
+
+    trap_group_attributes.prio = (value->u32 > SX_TRAP_PRIORITY_HIGH) ? SX_TRAP_PRIORITY_HIGH : value->u32;
+
+    if (SAI_STATUS_SUCCESS != (status = sx_api_host_ifc_trap_group_set(gh_sdk, DEFAULT_ETH_SWID,
+                                                                       group_id, &trap_group_attributes))) {
+        SX_LOG_ERR("Failed to sx_api_host_ifc_trap_group_set %s\n", SX_STATUS_MSG(status));
+        return sdk_to_sai(status);
+    }
+
+    SX_LOG_EXIT();
+    return SAI_STATUS_SUCCESS;
+}
+
+/* cpu egress queue [uint32_t] */
+static sai_status_t mlnx_trap_group_queue_get(_In_ const sai_object_key_t   *key,
+                                              _Inout_ sai_attribute_value_t *value,
+                                              _In_ uint32_t                  attr_index,
+                                              _Inout_ vendor_cache_t        *cache,
+                                              void                          *arg)
 {
     sai_status_t               status;
     uint32_t                   group_id;
@@ -1052,13 +1090,15 @@ static sai_status_t mlnx_trap_group_policer_set_internal(_In_ sai_object_id_t tr
     uint32_t         group_id;
 
     SX_LOG_ENTER();
-
     if (SAI_STATUS_SUCCESS !=
         (sai_status = mlnx_object_to_type(key.object_id, SAI_OBJECT_TYPE_TRAP_GROUP, &group_id, NULL))) {
         SX_LOG_EXIT();
         return sai_status;
     }
-
+    if (false == g_sai_db_ptr->trap_group_valid[group_id]) {
+        SX_LOG_ERR("Invalid group id specified %u\n", group_id);
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
     if (SAI_NULL_OBJECT_ID != policer_id) {
         if (SAI_STATUS_SUCCESS != (sai_status = mlnx_sai_bind_policer(trap_id, policer_id, NULL))) {
             SX_LOG_ERR("Failed to bind. trap_group id:0x%" PRIx64 ". sai policer object_id:0x%" PRIx64 "\n",
@@ -1068,7 +1108,7 @@ static sai_status_t mlnx_trap_group_policer_set_internal(_In_ sai_object_id_t tr
             return sai_status;
         }
     } else {
-        if (SAI_STATUS_SUCCESS != (sai_status = mlnx_sai_unbind_policer(trap_id, policer_id, NULL))) {
+        if (SAI_STATUS_SUCCESS != (sai_status = mlnx_sai_unbind_policer(trap_id, NULL))) {
             SX_LOG_ERR("Failed to un-bind. trap_group_id id:0x%" PRIx64 ". sai policer object_id:0x%" PRIx64 "\n",
                        trap_id,
                        policer_id);
@@ -1100,8 +1140,8 @@ sai_status_t mlnx_sai_unbind_policer_from_trap_group(_In_ sai_object_id_t sai_tr
                                                       DEFAULT_ETH_SWID,
                                                       group_id,
                                                       &sx_policer))) {
-        if (SX_STATUS_ENTRY_NOT_FOUND != sx_status) {
-            SX_LOG_ERR("No policer is bound to trap group:%d\n", group_id);
+        if (SX_STATUS_ENTRY_NOT_FOUND == sx_status) {
+            SX_LOG_DBG("No policer is bound to trap group:%d\n", group_id);
             SX_LOG_EXIT();
             return SAI_STATUS_SUCCESS;
         }
@@ -1144,19 +1184,6 @@ static void trap_group_key_to_str(_In_ sai_object_id_t group_id, _Out_ char *key
     } else {
         snprintf(key_str, MAX_KEY_STR_LEN, "Trap group %u", group_data);
     }
-}
-
-static sai_status_t mlnx_check_trap_group_prio(uint32_t prio, uint32_t prio_index)
-{
-    if ((prio > g_resource_limits.trap_group_priority_max) || (prio < g_resource_limits.trap_group_priority_min)) {
-        SX_LOG_ERR("Trap group priority %u out of range (%u,%u)\n",
-                   prio,
-                   g_resource_limits.trap_group_priority_min,
-                   g_resource_limits.trap_group_priority_max);
-        return SAI_STATUS_INVALID_ATTR_VALUE_0 + prio_index;
-    }
-
-    return SAI_STATUS_SUCCESS;
 }
 
 /*
@@ -1206,15 +1233,14 @@ static sai_status_t mlnx_create_hostif_trap_group(_Out_ sai_object_id_t      *ho
     sai_attr_list_to_str(attr_count, attr_list, trap_group_attribs, MAX_LIST_VALUE_STR_LEN, list_str);
     SX_LOG_NTC("Create trap group, %s\n", list_str);
 
-    assert(SAI_STATUS_SUCCESS ==
-           find_attrib_in_list(attr_count, attr_list, SAI_HOSTIF_TRAP_GROUP_ATTR_PRIO, &prio, &prio_index));
-    if (SAI_STATUS_SUCCESS != (status = mlnx_check_trap_group_prio(prio->u32, prio_index))) {
-        return status;
-    }
-
     trap_group_attributes.truncate_mode = SX_TRUNCATE_MODE_DISABLE;
     trap_group_attributes.truncate_size = 0;
-    trap_group_attributes.prio          = prio->u32;
+    trap_group_attributes.prio          = 0;
+
+    if (SAI_STATUS_SUCCESS ==
+        find_attrib_in_list(attr_count, attr_list, SAI_HOSTIF_TRAP_GROUP_ATTR_QUEUE, &prio, &prio_index)) {
+        trap_group_attributes.prio = (prio->u32 > SX_TRAP_PRIORITY_HIGH) ? SX_TRAP_PRIORITY_HIGH : prio->u32;
+    }
 
     cl_plock_excl_acquire(&g_sai_db_ptr->p_lock);
     for (group_id = 0; group_id < MAX_TRAP_GROUPS; group_id++) {
@@ -1234,8 +1260,6 @@ static sai_status_t mlnx_create_hostif_trap_group(_Out_ sai_object_id_t      *ho
         SX_LOG_ERR("Failed to sx_api_host_ifc_trap_group_set %s\n", SX_STATUS_MSG(status));
         return sdk_to_sai(status);
     }
-
-    /* TODO : handle queue */
 
     if (SAI_STATUS_SUCCESS !=
         (status = mlnx_create_object(SAI_OBJECT_TYPE_TRAP_GROUP, group_id, NULL, hostif_trap_group_id))) {
@@ -1286,21 +1310,17 @@ static sai_status_t mlnx_remove_hostif_trap_group(_In_ sai_object_id_t hostif_tr
     sai_status_t status;
 
     SX_LOG_ENTER();
-
     trap_group_key_to_str(hostif_trap_group_id, key_str);
     SX_LOG_NTC("Remove trap group %s\n", key_str);
-
     if (SAI_STATUS_SUCCESS !=
         (status = mlnx_object_to_type(hostif_trap_group_id, SAI_OBJECT_TYPE_TRAP_GROUP, &group_id, NULL))) {
         SX_LOG_EXIT();
         return status;
     }
-
     if (DEFAULT_TRAP_GROUP_ID == group_id) {
         SX_LOG_ERR("Can't delete the default trap group\n");
         return SAI_STATUS_OBJECT_IN_USE;
     }
-
     if (group_id >= MAX_TRAP_GROUPS) {
         SX_LOG_ERR("Invalid group id %u\n", group_id);
         return SAI_STATUS_INVALID_PARAMETER;
@@ -1311,10 +1331,14 @@ static sai_status_t mlnx_remove_hostif_trap_group(_In_ sai_object_id_t hostif_tr
         SX_LOG_ERR("Invalid group id %u\n", group_id);
         status = SAI_STATUS_INVALID_PARAMETER;
     } else {
+        if (SAI_STATUS_SUCCESS != (status = mlnx_sai_unbind_policer_from_trap_group(hostif_trap_group_id))) {
+            cl_plock_release(&g_sai_db_ptr->p_lock);
+            SX_LOG_EXIT();
+            return status;
+        }
         g_sai_db_ptr->trap_group_valid[group_id] = false;
     }
     cl_plock_release(&g_sai_db_ptr->p_lock);
-
     SX_LOG_EXIT();
     return status;
 }
@@ -1511,6 +1535,7 @@ static sai_status_t mlnx_get_hostif_user_defined_trap_attribute(
                               attr_list);
 }
 
+_Success_(return == SAI_STATUS_SUCCESS)
 static sai_status_t mlnx_trap_record_get(_In_ uint32_t         trap_id,
                                          _In_ mlnx_trap_type_t trap_type,
                                          _Out_ mlnx_trap_t    *trap_record)
@@ -2045,13 +2070,13 @@ static sai_status_t mlnx_send_hostif_packet(_In_ sai_object_id_t  hif_id,
     sai_attr_list_to_str(attr_count, attr_list, host_interface_packet_attribs, MAX_LIST_VALUE_STR_LEN, list_str);
     SX_LOG_NTC("send packet, %s\n", list_str);
 
-    assert(SAI_STATUS_SUCCESS ==
-           find_attrib_in_list(attr_count, attr_list, SAI_HOSTIF_PACKET_ATTR_TX_TYPE, &type, &type_index));
+    find_attrib_in_list(attr_count, attr_list, SAI_HOSTIF_PACKET_ATTR_TX_TYPE, &type, &type_index);
+    assert(SAI_STATUS_SUCCESS == status);
 
     if (SAI_HOSTIF_TX_TYPE_PIPELINE_BYPASS == type->s32) {
         if (SAI_STATUS_SUCCESS !=
             (status =
-            find_attrib_in_list(attr_count, attr_list, SAI_HOSTIF_PACKET_ATTR_EGRESS_PORT_OR_LAG, &port,
+                 find_attrib_in_list(attr_count, attr_list, SAI_HOSTIF_PACKET_ATTR_EGRESS_PORT_OR_LAG, &port,
                                      &port_index))) {
             SX_LOG_ERR("Missing mandatory attribute port or lag for bypass TX\n");
             return SAI_STATUS_MANDATORY_ATTRIBUTE_MISSING;
@@ -2071,7 +2096,7 @@ static sai_status_t mlnx_send_hostif_packet(_In_ sai_object_id_t  hif_id,
     } else if (SAI_HOSTIF_TX_TYPE_PIPELINE_LOOKUP == type->s32) {
         if (SAI_STATUS_ITEM_NOT_FOUND !=
             (status =
-            find_attrib_in_list(attr_count, attr_list, SAI_HOSTIF_PACKET_ATTR_EGRESS_PORT_OR_LAG, &port,
+                 find_attrib_in_list(attr_count, attr_list, SAI_HOSTIF_PACKET_ATTR_EGRESS_PORT_OR_LAG, &port,
                                      &port_index))) {
             SX_LOG_ERR("Invalid attribute port or lag for lookup TX\n");
             return SAI_STATUS_INVALID_ATTRIBUTE_0 + port_index;

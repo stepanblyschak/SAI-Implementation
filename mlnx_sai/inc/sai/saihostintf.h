@@ -44,12 +44,10 @@
 
 typedef enum _sai_hostif_trap_group_attr_t
 {
-    /** Admin Mode [bool] (default to TRUE) */
-    SAI_HOSTIF_TRAP_GROUP_ATTR_ADMIN_STATE,
+    SAI_HOSTIF_TRAP_GROUP_ATTR_START,    
 
-    /** group priority [uint32_t] (MANDATORY_ON_CREATE|CREATE_ONLY).
-    * This is equivalent to ACL table priority SAI_ACL_TABLE_ATTR_PRIORITY */
-    SAI_HOSTIF_TRAP_GROUP_ATTR_PRIO,
+    /** Admin Mode [bool] (default to TRUE) */
+    SAI_HOSTIF_TRAP_GROUP_ATTR_ADMIN_STATE = SAI_HOSTIF_TRAP_GROUP_ATTR_START,
 
     /** cpu egress queue [uint32_t] (CREATE_AND_SET)
      * (default to 0) */
@@ -59,7 +57,13 @@ typedef enum _sai_hostif_trap_group_attr_t
      * (default to SAI_NULL_OBJECT_ID) */
     SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER,
 
-    SAI_HOSTIF_TRAP_GROUP_ATTR_CUSTOM_RANGE_BASE = 0x10000000
+    SAI_HOSTIF_TRAP_GROUP_ATTR_END, 
+
+    SAI_HOSTIF_TRAP_GROUP_ATTR_CUSTOM_RANGE_START = 0x10000000,
+
+    /* --*/
+    SAI_HOSTIF_TRAP_GROUP_ATTR_CUSTOM_RANGE_END
+
 } sai_hostif_trap_group_attr_t;
 
 /**
@@ -200,7 +204,8 @@ typedef enum _sai_hostif_trap_id_t
     /** default packet action is forward */
     SAI_HOSTIF_TRAP_ID_VRRP = 0x00002005,
 
-    /** default packet action is forward */
+    /** BGP traffic (tcp src port == 179 or tcp dst port == 179) to local router IP address
+    * (default packet action is forward) */
     SAI_HOSTIF_TRAP_ID_BGP = 0x00002006,
 
     /** default packet action is forward */
@@ -212,7 +217,8 @@ typedef enum _sai_hostif_trap_id_t
     /** default packet action is forward */
     SAI_HOSTIF_TRAP_ID_VRRPV6 = 0x00002009,
 
-    /** default packet action is forward */
+    /** BGPv6 traffic (tcp src port == 179 or tcp dst port == 179) to local router IP address
+    * (default packet action is forward) */
     SAI_HOSTIF_TRAP_ID_BGPV6 = 0x0000200a,
 
     /** default packet action is forward */
@@ -229,6 +235,18 @@ typedef enum _sai_hostif_trap_id_t
 
     /** default packet action is forward */
     SAI_HOSTIF_TRAP_ID_MLD_V2_REPORT = 0x0000200f,
+
+    /** IP packets to local router IP address (routes with SAI_ROUTE_ATTR_NEXT_HOP_ID=SAI_SWITCH_ATTR_CPU_PORT)
+     * (default packet action is trap) */
+    SAI_HOSTIF_TRAP_ID_IP2ME = 0x00002010,
+
+    /** SSH traffic (tcp dst port == 22) to local router IP address 
+     * (default packet action is trap) */
+    SAI_HOSTIF_TRAP_ID_SSH = 0x00002011,
+
+    /** SNMP traffic (udp dst port == 161) to local router IP address
+     * (default packet action is trap) */
+    SAI_HOSTIF_TRAP_ID_SNMP = 0x00002012,
 
     /** default packet action is forward */
     SAI_HOSTIF_TRAP_ID_ROUTER_CUSTOM_RANGE_BASE = 0x0003000,
@@ -269,8 +287,11 @@ typedef enum _sai_hostif_trap_channel_t
 
 typedef enum _sai_hostif_trap_attr_t
 {
+    
+    SAI_HOSTIF_TRAP_ATTR_START,
+    
     /** trap action [sai_packet_action_t] */
-    SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION,
+    SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION = SAI_HOSTIF_TRAP_ATTR_START,
 
     /** Below attributes are only valid when
      * SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION == SAI_PACKET_ACTION_TRAP or 
@@ -299,7 +320,13 @@ typedef enum _sai_hostif_trap_attr_t
      * (default to SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP) */
     SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP,
 
-    SAI_HOSTIF_TRAP_ATTR_CUSTOM_RANGE_BASE  = 0x10000000
+    SAI_HOSTIF_TRAP_ATTR_END,
+
+    SAI_HOSTIF_TRAP_ATTR_CUSTOM_RANGE_START = 0x10000000,
+
+    /* --*/
+    SAI_HOSTIF_TRAP_ATTR_CUSTOM_RANGE_END
+
 
 } sai_hostif_trap_attr_t;
 
@@ -441,12 +468,14 @@ typedef enum _sai_hostif_type_t
  */
 typedef enum _sai_hostif_attr_t
 {
+    
+    SAI_HOSTIF_ATTR_START, 
     /** READ-ONLY */
 
     /** READ-WRITE */
 
     /** Host interface type [sai_hostif_type_t] (MANDATORY_ON_CREATE|CREATE_ONLY) */
-    SAI_HOSTIF_ATTR_TYPE,
+    SAI_HOSTIF_ATTR_TYPE = SAI_HOSTIF_ATTR_START,
 
     /** Assosiated port or router interface [sai_object_id_t]
     * Valid only when SAI_HOSTIF_ATTR_TYPE == SAI_HOSTIF_TYPE_NETDEV
@@ -460,8 +489,18 @@ typedef enum _sai_hostif_attr_t
     *   (MANDATORY_ON_CREATE when SAI_HOSTIF_ATTR_TYPE == SAI_HOSTIF_TYPE_NETDEV) */
     SAI_HOSTIF_ATTR_NAME,
 
+    /** Set the operational status for this host interface [bool] (default to false) */
+    SAI_HOSTIF_ATTR_OPER_STATUS,
+
+    /* --*/
+    SAI_HOSTIF_ATTR_END,    
+
     /* Custom range base value */
-    SAI_HOSTIF_ATTR_CUSTOM_RANGE_BASE = 0x10000000
+    SAI_HOSTIF_ATTR_CUSTOM_RANGE_START = 0x10000000,
+
+    /* --*/
+    SAI_HOSTIF_ATTR_CUSTOM_RANGE_END
+
 
 } sai_hostif_attr_t;
 
@@ -550,8 +589,10 @@ typedef enum _sai_hostif_tx_type
 
 typedef enum _sai_hostif_packet_attr_t
 {
+    SAI_HOSTIF_PACKET_ATTR_START,    
+
     /** Trap ID [sai_hostif_trap_id_t] (for receive-only) */
-    SAI_HOSTIF_PACKET_ATTR_TRAP_ID,
+    SAI_HOSTIF_PACKET_ATTR_TRAP_ID = SAI_HOSTIF_PACKET_ATTR_START,
 
     /** User-Defined Trap ID [sai_hostif_user_defined_trap_id_t] (for receive-only) */
     SAI_HOSTIF_PACKET_ATTR_USER_TRAP_ID,
@@ -565,9 +606,14 @@ typedef enum _sai_hostif_packet_attr_t
     /** packet transmit type [sai_hostif_tx_type_t]. (MANDATORY_ON_SEND) */
     SAI_HOSTIF_PACKET_ATTR_TX_TYPE,
 
-    /** Egress port or LAG [sai_object_id_t] (for send-only).
-     * (MANDATORY_ON_SEND when SAI_HOSTIF_PACKET_TX_TYPE == SAI_HOSTIF_TX_TYPE_PIPELINE_BYPASS) */
+    /** Egress port or LAG [sai_object_id_t].
+     * (MANDATORY_ON_SEND when SAI_HOSTIF_PACKET_ATTR_TX_TYPE == SAI_HOSTIF_TX_TYPE_PIPELINE_BYPASS)
+     * For receive case, filled with the egress destination port for unicast packets.
+     * Egress LAG member port id to be filled for the LAG destination case.
+     * Applicable for use-case like SAMPLEPACKET traps */
     SAI_HOSTIF_PACKET_ATTR_EGRESS_PORT_OR_LAG,
+
+    SAI_HOSTIF_PACKET_ATTR_END,
 
 } sai_hostif_packet_attr_t;
 

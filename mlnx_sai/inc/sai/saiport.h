@@ -179,18 +179,31 @@ typedef enum _sai_port_media_type_t
     /** Media type not known */
     SAI_PORT_MEDIA_TYPE_UNKNONWN,
 
-    /** Media type QSFP fiber optic */
-    SAI_PORT_MEDIA_TYPE_QSFP_FIBER,
+    /** Media type fiber. Remote advertise medium information as fiber */
+    SAI_PORT_MEDIA_TYPE_FIBER,
 
-    /** Media type QSFP copper optic */
-    SAI_PORT_MEDIA_TYPE_QSFP_COPPER,
-
-    /** Media type SFP fiber optic */
-    SAI_PORT_MEDIA_TYPE_SFP_FIBER,
-
-    /** Media type SFP copper optic */
-    SAI_PORT_MEDIA_TYPE_SFP_COPPER,
+    /** Media type copper. Remote advertise medium information as copper */
+    SAI_PORT_MEDIA_TYPE_COPPER,
 } sai_port_media_type_t;
+
+/**
+ * @brief Breakout Mode types based on number
+ * of SerDes lanes used in a port
+ */
+typedef enum _sai_port_breakout_mode_type_t
+{
+    /** 1 lane breakout Mode */
+    SAI_PORT_BREAKOUT_MODE_1_LANE = 1,
+
+    /** 2 lanes breakout Mode */
+    SAI_PORT_BREAKOUT_MODE_2_LANE = 2,
+
+    /** 4 lanes breakout Mode */
+    SAI_PORT_BREAKOUT_MODE_4_LANE = 4,
+
+    /** Breakout mode max count */
+    SAI_PORT_BREAKOUT_MODE_MAX
+} sai_port_breakout_mode_type_t;
 
 /**
  *  Attribute Id in sai_set_port_attribute() and
@@ -198,16 +211,16 @@ typedef enum _sai_port_media_type_t
  */
 typedef enum _sai_port_attr_t
 {
+        
+    SAI_PORT_ATTR_START,
+    
     /** READ-ONLY */
 
     /** Port Type [sai_port_type_t] */
-    SAI_PORT_ATTR_TYPE,
+    SAI_PORT_ATTR_TYPE = SAI_PORT_ATTR_START,
 
     /** Operational Status [sai_port_oper_status_t] */
     SAI_PORT_ATTR_OPER_STATUS,
-
-    /** Hardware Lane list [sai_u32_list_t] */
-    SAI_PORT_ATTR_HW_LANE_LIST,
 
     /** Breakout mode(s) supported [sai_s32_list_t] */
     SAI_PORT_ATTR_SUPPORTED_BREAKOUT_MODE,
@@ -227,8 +240,65 @@ typedef enum _sai_port_attr_t
     /** List of Scheduler groups for the port[sai_object_list_t] */
     SAI_PORT_ATTR_QOS_SCHEDULER_GROUP_LIST,
 
-    /** Query list of supported port speed in Mbps [sai_u32_list_t] */
+    /** Query list of supported port speed(full-duplex) in Mbps [sai_u32_list_t] */
     SAI_PORT_ATTR_SUPPORTED_SPEED,
+
+    /** Query list of Supported HALF-Duplex speed in Mbps [sai_u32_list_t] */
+    SAI_PORT_ATTR_SUPPORTED_HALF_DUPLEX_SPEED,
+
+    /** Query auto-negotiation support [bool] */
+    SAI_PORT_ATTR_SUPPORTED_AUTO_NEG_MODE,
+
+    /** Query port supported flow control mode [sai_port_flow_control_mode_t] */
+    SAI_PORT_ATTR_SUPPORTED_FLOW_CONTROL,
+
+    /** Query port supported asymmetric pause mode [bool] */
+    SAI_PORT_ATTR_SUPPORTED_ASYMMETRIC_PAUSE_MODE,
+
+    /** Query port supported MEDIA type [sai_port_media_type_t] */
+    SAI_PORT_ATTR_SUPPORTED_MEDIA_TYPE,
+
+    /** Query list of supported remote port speed (Full-Duplex)
+      * in Mbps [sai_u32_list_t] */
+    SAI_PORT_ATTR_REMOTE_SUPPORTED_SPEED,
+
+    /** Query list of Remote Port’s Supported
+      * HALF-Duplex speed in Mbps [sai_u32_list_t] */
+    SAI_PORT_ATTR_REMOTE_SUPPORTED_HALF_DUPLEX_SPEED,
+
+    /** Query Remote Port’s auto-negotiation support [bool] */
+    SAI_PORT_ATTR_REMOTE_SUPPORTED_AUTO_NEG_MODE,
+
+    /** Query Remote port supported flow control mode
+      * [sai_port_flow_control_mode_t] */
+    SAI_PORT_ATTR_REMOTE_SUPPORTED_FLOW_CONTROL,
+
+    /** Query Remote port supported asymmetric pause mode [bool] */
+    SAI_PORT_ATTR_REMOTE_SUPPORTED_ASYMMETRIC_PAUSE_MODE,
+
+    /** Query Remote port MEDIA type [sai_port_media_type_t] */
+    SAI_PORT_ATTR_REMOTE_SUPPORTED_MEDIA_TYPE,
+
+    /** Query list of Advertised remote port speed (Full-Duplex)
+      * in Mbps [sai_u32_list_t] */
+    SAI_PORT_ATTR_REMOTE_ADVERTISED_SPEED,
+
+    /** Query list of Remote Port’s
+      * Advertised HALF-Duplex speed in Mbps [sai_u32_list_t] */
+    SAI_PORT_ATTR_REMOTE_ADVERTISED_HALF_DUPLEX_SPEED,
+
+    /** Query Remote Port’s auto-negotiation Advertisement [bool] */
+    SAI_PORT_ATTR_REMOTE_ADVERTISED_AUTO_NEG_MODE,
+
+    /** Query Remote port Advertised flow control mode
+      * [sai_port_flow_control_mode_t] */
+    SAI_PORT_ATTR_REMOTE_ADVERTISED_FLOW_CONTROL,
+
+    /** Query Remote port Advertised asymmetric pause mode [bool] */
+    SAI_PORT_ATTR_REMOTE_ADVERTISED_ASYMMETRIC_PAUSE_MODE,
+
+    /** Query Remote port Advertised MEDIA type [sai_port_media_type_t] */
+    SAI_PORT_ATTR_REMOTE_ADVERTISED_MEDIA_TYPE,
 
     /** Number of ingress priority groups [sai_uint32_t] */
     SAI_PORT_ATTR_NUMBER_OF_PRIORITY_GROUPS,
@@ -237,7 +307,13 @@ typedef enum _sai_port_attr_t
     SAI_PORT_ATTR_PRIORITY_GROUP_LIST,
 
     /** READ-WRITE */
-    /** Speed in Mbps [uint32_t] */
+
+    /** Hardware Lane list [sai_u32_list_t]
+     * (CREATE_ONLY|MANDATORY_ON_CREATE|KEY) */
+    SAI_PORT_ATTR_HW_LANE_LIST,
+
+    /** Speed in Mbps [uint32_t]
+     * (MANDATORY_ON_CREATE) */
     SAI_PORT_ATTR_SPEED,
 
     /** Full Duplex setting [bool] (default to TRUE) */
@@ -252,6 +328,27 @@ typedef enum _sai_port_attr_t
     /** Media Type [sai_port_media_type_t],
      * (default to SAI_PORT_MEDIA_TYPE_NOT_PRESENT) */
     SAI_PORT_ATTR_MEDIA_TYPE,
+
+    /** Query/Configure list of Advertised port speed (Full-Duplex)
+      * in Mbps [sai_u32_list_t] */
+    SAI_PORT_ATTR_ADVERTISED_SPEED,
+
+    /** Query/Configure list of Advertised
+     * HALF-Duplex speed in Mbps [sai_u32_list_t] */
+    SAI_PORT_ATTR_ADVERTISED_HALF_DUPLEX_SPEED,
+
+    /** Query/Configure Port’s Advertised auto-negotiation configuration [bool] */
+    SAI_PORT_ATTR_ADVERTISED_AUTO_NEG_MODE,
+
+    /** Query/Configure Port’s Advertised flow control mode
+      * [sai_port_flow_control_mode_t] */
+    SAI_PORT_ATTR_ADVERTISED_FLOW_CONTROL,
+
+    /** Query port's Advertised asymmetric pause mode [bool] */
+    SAI_PORT_ATTR_ADVERTISED_ASYMMETRIC_PAUSE_MODE,
+
+    /** Query/Configure Port’s Advertised media type [sai_port_media_type_t] */
+    SAI_PORT_ATTR_ADVERTISED_MEDIA_TYPE,
 
     /** Port VLAN ID [sai_vlan_id_t]
      * Untagged ingress frames are tagged with Port VLAN ID (PVID)
@@ -431,10 +528,26 @@ typedef enum _sai_port_attr_t
      * given port list will be dropped. */
     SAI_PORT_ATTR_EGRESS_BLOCK_PORT_LIST,
 
+    /** Port Hardware Configuration Profile ID [sai_uint64_t]
+     * Port can require different hardware configuration based on the attached
+     * media type, cable length etc. A Profile ID maps to a Port Hardware
+     * configuration settings that needs to be applied on the Port.
+     * This attribute need not be implemented and can be ignored if the port
+     * doesn't require any specific hardware settings based on media type/cable.
+     */
+    SAI_PORT_ATTR_HW_PROFILE_ID,
+
     /** -- */
 
+    SAI_PORT_ATTR_END,
+
+
     /* Custom range base value */
-    SAI_PORT_ATTR_CUSTOM_RANGE_BASE  = 0x10000000
+    SAI_PORT_ATTR_CUSTOM_RANGE_START = 0x10000000,
+
+    /* --*/
+    SAI_PORT_ATTR_CUSTOM_RANGE_END
+
 
 } sai_port_attr_t;
 
@@ -529,6 +642,9 @@ typedef enum _sai_port_stat_counter_t
     /** get/set WRED dropped bytes  count [uint64_t] */
     SAI_PORT_STAT_DISCARD_DROPPED_BYTES,
 
+    /** get/set packets marked by ECN count [uint64_t] */
+    SAI_PORT_STAT_ECN_MARKED_PACKETS,
+
     /** packet size based packets count */
     SAI_PORT_STAT_ETHER_IN_PKTS_64_OCTETS,
     SAI_PORT_STAT_ETHER_IN_PKTS_65_TO_127_OCTETS,
@@ -589,9 +705,42 @@ typedef enum _sai_port_stat_counter_t
 
 } sai_port_stat_counter_t;
 
+/**
+ * Routine Description:
+ *    @brief Create port
+ *
+ * Arguments:
+ *    @param[out] port_id - port id
+ *    @param[in] attr_count - number of attributes
+ *    @param[in] attr_list - array of attributes
+ *
+ * Return Values:
+ *    @return SAI_STATUS_SUCCESS on success
+ *            Failure status code on error
+ *
+ */
+typedef sai_status_t (*sai_create_port_fn)(
+    _Out_ sai_object_id_t* port_id,
+    _In_ uint32_t attr_count,
+    _In_ const sai_attribute_t *attr_list
+    );
 
 /**
  * Routine Description:
+ *    @brief Remove port
+ *
+ * Arguments:
+ *    @param[in] port_id - port id
+ *
+ * Return Values:
+ *    @return SAI_STATUS_SUCCESS on success
+ *            Failure status code on error
+ */
+typedef sai_status_t (*sai_remove_port_fn)(
+    _In_ sai_object_id_t port_id
+    );
+
+/* Routine Description:
  *   @brief Set port attribute value.
  *
  * Arguments:
@@ -606,7 +755,6 @@ typedef sai_status_t (*sai_set_port_attribute_fn)(
     _In_ sai_object_id_t port_id,
     _In_ const sai_attribute_t *attr
     );
-
 
 /**
  * Routine Description:
@@ -719,6 +867,8 @@ typedef void (*sai_port_event_notification_fn)(
  */
 typedef struct _sai_port_api_t
 {
+    sai_create_port_fn              create_port;
+    sai_remove_port_fn              remove_port;
     sai_set_port_attribute_fn       set_port_attribute;
     sai_get_port_attribute_fn       get_port_attribute;
     sai_get_port_stats_fn           get_port_stats;

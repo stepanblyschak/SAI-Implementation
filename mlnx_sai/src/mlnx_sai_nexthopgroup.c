@@ -107,9 +107,10 @@ static sai_status_t mlnx_translate_sai_next_hop_object(_In_ uint32_t            
     return SAI_STATUS_SUCCESS;
 }
 
-static sai_status_t mlnx_translate_sai_next_hop_objects(_In_ uint32_t               count,
-                                                        _In_ const sai_object_id_t *next_hop_id,
-                                                        _Out_ sx_next_hop_t        *sx_next_hop)
+_Success_(return == SAI_STATUS_SUCCESS)
+static sai_status_t mlnx_translate_sai_next_hop_objects(_In_ uint32_t                      count,
+                                                        _In_ const sai_object_id_t        *next_hop_id,
+                                                        _Out_writes_(count) sx_next_hop_t *sx_next_hop)
 {
     sai_status_t status;
     uint32_t     ii;
@@ -168,14 +169,11 @@ static sai_status_t mlnx_create_next_hop_group(_Out_ sai_object_id_t     * next_
     sai_attr_list_to_str(attr_count, attr_list, next_hop_group_attribs, MAX_LIST_VALUE_STR_LEN, list_str);
     SX_LOG_NTC("Create next hop group, %s\n", list_str);
 
-    assert(SAI_STATUS_SUCCESS ==
-           find_attrib_in_list(attr_count, attr_list, SAI_NEXT_HOP_GROUP_ATTR_TYPE, &type, &type_index));
-    assert(SAI_STATUS_SUCCESS ==
-           find_attrib_in_list(attr_count,
-                               attr_list,
-                               SAI_NEXT_HOP_GROUP_ATTR_NEXT_HOP_LIST,
-                               &hop_list,
-                               &hop_list_index));
+    status = find_attrib_in_list(attr_count, attr_list, SAI_NEXT_HOP_GROUP_ATTR_TYPE, &type, &type_index);
+    assert(SAI_STATUS_SUCCESS == status);
+    status = find_attrib_in_list(attr_count, attr_list, SAI_NEXT_HOP_GROUP_ATTR_NEXT_HOP_LIST, &hop_list,
+                                 &hop_list_index);
+    assert(SAI_STATUS_SUCCESS == status);
 
     if (SAI_NEXT_HOP_GROUP_ECMP != type->s32) {
         SX_LOG_ERR("Invalid next hop group type %d on create\n", type->s32);

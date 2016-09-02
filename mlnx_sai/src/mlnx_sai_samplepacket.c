@@ -31,6 +31,8 @@ static const sai_attribute_entry_t samplepacket_attribs[] = {
       "Samplepacket attr sample rate", SAI_ATTR_VAL_TYPE_U32 },
     { SAI_SAMPLEPACKET_ATTR_TYPE, false, true, false, true,
       "Samplepacket attr type", SAI_ATTR_VAL_TYPE_S32 },
+    { SAI_SAMPLEPACKET_ATTR_MODE, false, true, false, true,
+      "Samplepacket attr mode", SAI_ATTR_VAL_TYPE_S32 },
     { END_FUNCTIONALITY_ATTRIBS_ID, false, false, false, true,
       "", SAI_ATTR_VAL_TYPE_UNDETERMINED }
 };
@@ -40,6 +42,11 @@ static sai_status_t mlnx_samplepacket_sample_rate_get(_In_ const sai_object_key_
                                                       _Inout_ vendor_cache_t        *cache,
                                                       void                          *arg);
 static sai_status_t mlnx_samplepacket_type_get(_In_ const sai_object_key_t   *key,
+                                               _Inout_ sai_attribute_value_t *value,
+                                               _In_ uint32_t                  attr_index,
+                                               _Inout_ vendor_cache_t        *cache,
+                                               void                          *arg);
+static sai_status_t mlnx_samplepacket_mode_get(_In_ const sai_object_key_t   *key,
                                                _Inout_ sai_attribute_value_t *value,
                                                _In_ uint32_t                  attr_index,
                                                _Inout_ vendor_cache_t        *cache,
@@ -61,6 +68,11 @@ static const sai_vendor_attribute_entry_t samplepacket_vendor_attribs[] = {
       { true, false, false, true },
       { true, false, false, true },
       mlnx_samplepacket_type_get, NULL,
+      NULL, NULL },
+    { SAI_SAMPLEPACKET_ATTR_MODE,
+      { true, false, false, true },
+      { true, false, false, true },
+      mlnx_samplepacket_mode_get, NULL,
       NULL, NULL },
 };
 static void samplepacket_key_to_str(_In_ const sai_object_id_t sai_samplepacket_obj_id, _Out_ char *key_str)
@@ -251,6 +263,46 @@ cleanup:
     return status;
 }
 
+static sai_status_t mlnx_samplepacket_mode_get(_In_ const sai_object_key_t   *key,
+                                               _Inout_ sai_attribute_value_t *value,
+                                               _In_ uint32_t                  attr_index,
+                                               _Inout_ vendor_cache_t        *cache,
+                                               void                          *arg)
+{
+    sai_status_t status                        = SAI_STATUS_FAILURE;
+    uint32_t     internal_samplepacket_obj_idx = 0;
+
+    SX_LOG_ENTER();
+
+    if (SAI_STATUS_SUCCESS !=
+        (status =
+             mlnx_object_to_type(key->object_id, SAI_OBJECT_TYPE_SAMPLEPACKET, &internal_samplepacket_obj_idx,
+                                 NULL))) {
+        SX_LOG_ERR("Invalid sai samplepacket obj id: %" PRId64 "\n", key->object_id);
+        SX_LOG_EXIT();
+        return status;
+    }
+
+    assert(NULL != g_sai_db_ptr);
+
+    sai_db_read_lock();
+
+    if (g_sai_db_ptr->mlnx_samplepacket_session[internal_samplepacket_obj_idx].in_use) {
+        value->s32 = g_sai_db_ptr->mlnx_samplepacket_session[internal_samplepacket_obj_idx].sai_mode;
+    } else {
+        SX_LOG_ERR("Non-exist internal samplepacket obj idx: %d\n", internal_samplepacket_obj_idx);
+        status = SAI_STATUS_INVALID_OBJECT_ID;
+        goto cleanup;
+    }
+
+    status = SAI_STATUS_SUCCESS;
+
+cleanup:
+    sai_db_unlock();
+    SX_LOG_EXIT();
+    return status;
+}
+
 static sai_status_t mlnx_samplepacket_sample_rate_set(_In_ const sai_object_key_t      *key,
                                                       _In_ const sai_attribute_value_t *value,
                                                       void                             *arg)
@@ -353,10 +405,12 @@ static sai_status_t mlnx_create_samplepacket_session(_Out_ sai_object_id_t      
                                                      _In_ const sai_attribute_t *attr_list)
 {
     char                         list_str[MAX_LIST_VALUE_STR_LEN];
-    const sai_attribute_value_t *samplepacket_sample_rate      = NULL, *samplepacket_type = NULL;
-    sai_status_t                 status                        = SAI_STATUS_FAILURE, status_type = SAI_STATUS_FAILURE;
-    uint32_t                     index                         = 0;
-    uint32_t                     internal_samplepacket_obj_idx = 0;
+    const sai_attribute_value_t *samplepacket_sample_rate = NULL, *samplepacket_type = NULL, *samplepacket_mode =
+        NULL;
+    sai_status_t status                        = SAI_STATUS_FAILURE, status_type = SAI_STATUS_FAILURE;
+    sai_status_t status_mode                   = SAI_STATUS_FAILURE;
+    uint32_t     index                         = 0;
+    uint32_t     internal_samplepacket_obj_idx = 0;
 
     SX_LOG_ENTER();
 
@@ -391,6 +445,17 @@ static sai_status_t mlnx_create_samplepacket_session(_Out_ sai_object_id_t      
         }
     }
 
+    status_mode = find_attrib_in_list(attr_count, attr_list, SAI_SAMPLEPACKET_ATTR_MODE, &samplepacket_mode, &index);
+
+    if (SAI_STATUS_SUCCESS == status_mode) {
+        if (SAI_SAMPLEPACKET_MODE_EXCLUSIVE != samplepacket_mode->s32) {
+            SX_LOG_ERR("Supported samplepacket mode should be SAI_SAMPLEPACKET_MODE_ECLUSIVE but get %d instead\n",
+                       samplepacket_mode->s32);
+            SX_LOG_EXIT();
+            return SAI_STATUS_INVALID_ATTR_VALUE_0 + samplepacket_mode->s32;
+        }
+    }
+
     assert(NULL != g_sai_db_ptr);
 
     sai_db_write_lock();
@@ -414,6 +479,13 @@ static sai_status_t mlnx_create_samplepacket_session(_Out_ sai_object_id_t      
         g_sai_db_ptr->mlnx_samplepacket_session[internal_samplepacket_obj_idx].sai_type = samplepacket_type->s32;
     } else {
         g_sai_db_ptr->mlnx_samplepacket_session[internal_samplepacket_obj_idx].sai_type = SAI_SAMPLEPACKET_SLOW_PATH;
+    }
+
+    if (SAI_STATUS_SUCCESS == status_mode) {
+        g_sai_db_ptr->mlnx_samplepacket_session[internal_samplepacket_obj_idx].sai_mode = samplepacket_mode->s32;
+    } else {
+        g_sai_db_ptr->mlnx_samplepacket_session[internal_samplepacket_obj_idx].sai_mode =
+            SAI_SAMPLEPACKET_MODE_EXCLUSIVE;
     }
 
     if (SAI_STATUS_SUCCESS !=

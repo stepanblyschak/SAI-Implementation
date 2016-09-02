@@ -187,8 +187,8 @@ sai_status_t sai_api_query(_In_ sai_api_t sai_api_id, _Out_ void** api_method_ta
         return SAI_STATUS_NOT_IMPLEMENTED;
 
     case SAI_API_TUNNEL:
-        /* TODO : implement */
-        return SAI_STATUS_NOT_IMPLEMENTED;
+        *(const sai_tunnel_api_t**)api_method_table = &mlnx_tunnel_api;
+        return SAI_STATUS_SUCCESS;
 
     default:
         fprintf(stderr, "Invalid API type %d\n", sai_api_id);
@@ -344,8 +344,7 @@ sai_status_t sai_log_set(_In_ sai_api_t sai_api_id, _In_ sai_log_level_t log_lev
         return SAI_STATUS_NOT_IMPLEMENTED;
 
     case SAI_API_TUNNEL:
-        /* TODO : implement */
-        return SAI_STATUS_NOT_IMPLEMENTED;
+        return mlnx_tunnel_log_set(severity);
 
     default:
         fprintf(stderr, "Invalid API type %d\n", sai_api_id);

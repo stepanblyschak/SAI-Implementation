@@ -149,8 +149,8 @@ static sai_status_t mlnx_create_neighbor_entry(_In_ const sai_neighbor_entry_t* 
     neigh_data.rif            = (sx_router_interface_t)rif_data;
     neigh_data.trap_attr.prio = SX_TRAP_PRIORITY_MED;
 
-    assert(SAI_STATUS_SUCCESS ==
-           find_attrib_in_list(attr_count, attr_list, SAI_NEIGHBOR_ATTR_DST_MAC_ADDRESS, &mac, &mac_index));
+    status = find_attrib_in_list(attr_count, attr_list, SAI_NEIGHBOR_ATTR_DST_MAC_ADDRESS, &mac, &mac_index);
+    assert(SAI_STATUS_SUCCESS == status);
     memcpy(&neigh_data.mac_addr, mac->mac, sizeof(neigh_data.mac_addr));
 
     if (SAI_STATUS_SUCCESS ==

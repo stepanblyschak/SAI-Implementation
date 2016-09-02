@@ -495,25 +495,15 @@ sai_status_t mlnx_hash_get_oper_ecmp_fields(sx_router_ecmp_port_hash_params_t  *
                                             sx_router_ecmp_hash_field_t        *hash_field_list,
                                             uint32_t                           *field_count)
 {
-    uint32_t         ii          = 0;
-    sx_port_log_id_t port_log_id = 0;
-    sx_status_t      status      = SX_STATUS_SUCCESS;
+    uint32_t            ii          = 0;
+    sx_port_log_id_t    port_log_id = 0;
+    sx_status_t         status      = SX_STATUS_SUCCESS;
+    mlnx_port_config_t *port;
 
-    sai_db_read_lock();
-    while ((ii < g_sai_db_ptr->ports_number) && (g_sai_db_ptr->ports_db[ii].lag_id)) {
-        ii++;
+    mlnx_port_not_in_lag_foreach(port, ii) {
+        port_log_id = port->logical;
+        break;
     }
-    if (ii < g_sai_db_ptr->ports_number) {
-        port_log_id = g_sai_db_ptr->ports_db[ii].logical;
-    } else {
-        for (ii = 0; ii < SAI_LAG_NUM_MAX; ii++) {
-            if (g_sai_db_ptr->lag_db[ii]) {
-                port_log_id = g_sai_db_ptr->lag_db[ii];
-                break;
-            }
-        }
-    }
-    sai_db_unlock();
 
     status = sx_api_router_ecmp_port_hash_params_get(gh_sdk, port_log_id, port_hash_param,
                                                      hash_enable_list, enable_count,
@@ -525,6 +515,7 @@ sai_status_t mlnx_hash_get_oper_ecmp_fields(sx_router_ecmp_port_hash_params_t  *
 }
 
 /* Get operational ECMP config and apply it for specified port */
+/* SAI DB lock is needed */
 sai_status_t mlnx_hash_ecmp_cfg_apply_on_port(sx_port_log_id_t port_log_id)
 {
     sx_access_cmd_t                    cmd = SX_ACCESS_CMD_SET;
@@ -570,15 +561,18 @@ sai_status_t mlnx_hash_ecmp_attr_apply(const sai_attr_id_t attr_id, const sai_at
     uint32_t                           ii          = 0;
     sx_status_t                        sx_status   = SX_STATUS_SUCCESS;
     sai_status_t                       status      = SAI_STATUS_SUCCESS;
+    mlnx_port_config_t                *port;
 
     memset(&port_hash_param, 0, sizeof(port_hash_param));
     memset(hash_enable_list, 0, sizeof(hash_enable_list));
     memset(hash_field_list, 0, sizeof(hash_field_list));
 
+    sai_db_read_lock();
+
     status = mlnx_hash_get_oper_ecmp_fields(&port_hash_param, hash_enable_list, &enable_count,
                                             hash_field_list, &field_count);
     if (SAI_STATUS_SUCCESS != status) {
-        return status;
+        goto out;
     }
 
     switch (attr_id) {
@@ -602,45 +596,25 @@ sai_status_t mlnx_hash_ecmp_attr_apply(const sai_attr_id_t attr_id, const sai_at
     }
 
     if (SAI_STATUS_SUCCESS != status) {
-        return status;
+        goto out;
     }
 
-    sai_db_read_lock();
     /* apply new fields for all ports */
-    for (ii = 0; ii < g_sai_db_ptr->ports_number; ii++) {
-        if (g_sai_db_ptr->ports_db[ii].lag_id) {
-            /* port is member of LAG */
-            continue;
-        }
-
-        sx_status = sx_api_router_ecmp_port_hash_params_set(gh_sdk, cmd, g_sai_db_ptr->ports_db[ii].logical,
+    mlnx_port_not_in_lag_foreach(port, ii) {
+        sx_status = sx_api_router_ecmp_port_hash_params_set(gh_sdk, cmd, port->logical,
                                                             &port_hash_param,
                                                             hash_enable_list, enable_count,
                                                             hash_field_list, field_count);
         if (SX_STATUS_SUCCESS != sx_status) {
-            SX_LOG_ERR("Failed to set ecmp hash params for port %x - %s.\n",
-                       g_sai_db_ptr->ports_db[ii].logical, SX_STATUS_MSG(sx_status));
+            SX_LOG_ERR("Failed to set ecmp hash params for %s %x - %s.\n",
+                       mlnx_port_type_str(port),
+                       port->logical,
+                       SX_STATUS_MSG(sx_status));
             status = sdk_to_sai(sx_status);
             goto out;
         }
     }
 
-    for (ii = 0; ii < SAI_LAG_NUM_MAX; ii++) {
-        if (g_sai_db_ptr->lag_db[ii] == 0) {
-            continue;
-        }
-
-        sx_status = sx_api_router_ecmp_port_hash_params_set(gh_sdk, cmd, g_sai_db_ptr->lag_db[ii],
-                                                            &port_hash_param,
-                                                            hash_enable_list, enable_count,
-                                                            hash_field_list, field_count);
-        if (SX_STATUS_SUCCESS != sx_status) {
-            SX_LOG_ERR("Failed to set ecmp hash params for LAG %x - %s.\n",
-                       g_sai_db_ptr->ports_db[ii].logical, SX_STATUS_MSG(sx_status));
-            status = sdk_to_sai(sx_status);
-            goto out;
-        }
-    }
 out:
     sai_db_unlock();
     return status;
@@ -939,9 +913,9 @@ static sai_status_t mlnx_hash_native_field_list_set(_In_ const sai_object_key_t 
  *            Failure status code on error
  *
  */
-static sai_status_t mlnx_create_hash(_Out_ sai_object_id_t* hash_id,
-                                     _In_ uint32_t          attr_count,
-                                     _In_ const sai_attribute_t  *attr_list)
+static sai_status_t mlnx_create_hash(_Out_ sai_object_id_t     * hash_id,
+                                     _In_ uint32_t               attr_count,
+                                     _In_ const sai_attribute_t *attr_list)
 {
     uint32_t                     index = 0;
     const sai_attribute_value_t *native_filed_list;

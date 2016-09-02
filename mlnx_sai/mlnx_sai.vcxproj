@@ -180,6 +180,7 @@
     <ClCompile Include="src\mlnx_sai_scheduler_group.c" />
     <ClCompile Include="src\mlnx_sai_switch.c" />
     <ClCompile Include="src\mlnx_sai_buffer.c" />
+    <ClCompile Include="src\mlnx_sai_tunnel.c" />
     <ClCompile Include="src\mlnx_sai_utils.c" />
     <ClCompile Include="src\mlnx_sai_vlan.c" />
     <ClCompile Include="src\mlnx_sai_wred.c" />

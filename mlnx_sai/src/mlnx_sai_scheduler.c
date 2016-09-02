@@ -353,7 +353,7 @@ static sai_status_t scheduler_to_group_apply(sai_object_id_t  scheduler_id,
     return group_update_ets(port_id, &ets, level, index);
 }
 
-static mlnx_iter_ret_t sched_profile_update_groups(mlnx_qos_port_config_t *port, mlnx_sched_obj_t *obj, void *arg)
+static mlnx_iter_ret_t sched_profile_update_groups(mlnx_port_config_t *port, mlnx_sched_obj_t *obj, void *arg)
 {
     mlnx_sched_iter_ctx_t *ctx = arg;
     sai_object_id_t        scheduler_id;
@@ -369,7 +369,7 @@ static mlnx_iter_ret_t sched_profile_update_groups(mlnx_qos_port_config_t *port,
     }
 
     if (scheduler_id == obj->scheduler_id) {
-        ctx->sai_status = scheduler_to_group_apply(scheduler_id, port->log_port_id, obj->level,
+        ctx->sai_status = scheduler_to_group_apply(scheduler_id, port->logical, obj->level,
                                                    obj->index);
         if (SAI_ERR(ctx->sai_status)) {
             return ITER_STOP;
@@ -385,7 +385,7 @@ static sai_status_t mlnx_sched_attr_setter(_In_ const sai_object_key_t      *key
 {
     uint32_t                    attr_id = (sai_scheduler_attr_t)arg;
     mlnx_sched_profile_t       *sched;
-    mlnx_qos_port_config_t     *port;
+    mlnx_port_config_t         *port;
     mlnx_qos_queue_config_t    *queue;
     sx_cos_ets_element_config_t ets;
     sai_status_t                status;
@@ -455,9 +455,9 @@ static sai_status_t mlnx_sched_attr_setter(_In_ const sai_object_key_t      *key
     memcpy(&ets, &sched->ets, sizeof(ets));
     sai_to_sdk_rate(sched->min_rate, sched->max_rate, &ets);
 
-    qos_port_foreach(port, ii) {
+    mlnx_port_not_in_lag_foreach(port, ii) {
         if (port->scheduler_id == key->object_id) {
-            status = port_update_ets(port->log_port_id, &ets);
+            status = port_update_ets(port->logical, &ets);
 
             if (status != SAI_STATUS_SUCCESS) {
                 goto out;
@@ -466,7 +466,7 @@ static sai_status_t mlnx_sched_attr_setter(_In_ const sai_object_key_t      *key
 
         port_queues_foreach(port, queue, qi) {
             if (queue->sched_obj.scheduler_id == key->object_id) {
-                status = queue_update_ets(port->log_port_id, &ets, &queue->sched_obj);
+                status = queue_update_ets(port->logical, &ets, &queue->sched_obj);
 
                 if (status != SAI_STATUS_SUCCESS) {
                     goto out;
@@ -659,7 +659,7 @@ static sai_status_t mlnx_create_scheduler_profile(_Out_ sai_object_id_t      *sc
     return SAI_STATUS_SUCCESS;
 }
 
-static mlnx_iter_ret_t sched_profile_use_check(mlnx_qos_port_config_t *cfg, mlnx_sched_obj_t *obj, void *arg)
+static mlnx_iter_ret_t sched_profile_use_check(mlnx_port_config_t *cfg, mlnx_sched_obj_t *obj, void *arg)
 {
     mlnx_sched_iter_ctx_t *ctx = arg;
 
@@ -683,11 +683,11 @@ static mlnx_iter_ret_t sched_profile_use_check(mlnx_qos_port_config_t *cfg, mlnx
  */
 static sai_status_t mlnx_remove_scheduler_profile(_In_ sai_object_id_t scheduler_id)
 {
-    mlnx_qos_port_config_t *port;
-    mlnx_sched_profile_t   *sched;
-    mlnx_sched_iter_ctx_t   ctx = { .arg = &scheduler_id, .sai_status = SAI_STATUS_SUCCESS };
-    sai_status_t            status;
-    uint32_t                ii;
+    mlnx_port_config_t   *port;
+    mlnx_sched_profile_t *sched;
+    mlnx_sched_iter_ctx_t ctx = { .arg = &scheduler_id, .sai_status = SAI_STATUS_SUCCESS };
+    sai_status_t          status;
+    uint32_t              ii;
 
     SX_LOG_ENTER();
 
@@ -698,11 +698,11 @@ static sai_status_t mlnx_remove_scheduler_profile(_In_ sai_object_id_t scheduler
         goto out;
     }
 
-    qos_port_foreach(port, ii) {
+    mlnx_port_foreach(port, ii) {
         /* Check if scheduler is bound to the port */
         if (port->scheduler_id == scheduler_id) {
             SX_LOG_ERR("Can't remove scheduler_id %" PRIx64 ", used by port log id 0x%x\n",
-                       scheduler_id, port->log_port_id);
+                       scheduler_id, port->logical);
 
             status = SAI_STATUS_OBJECT_IN_USE;
             goto out;
@@ -801,17 +801,17 @@ sai_status_t mlnx_scheduler_to_port_apply(sai_object_id_t scheduler_id, sai_obje
 
     status = mlnx_object_to_type(port_id, SAI_OBJECT_TYPE_PORT, &port_log_id, NULL);
     if (status != SAI_STATUS_SUCCESS) {
-        goto out;
+        return status;
     }
 
-    status = mlnx_qos_get_port_index(port_log_id, &port_idx);
+    sai_qos_db_write_lock();
+
+    status = mlnx_port_idx_by_log_id(port_log_id, &port_idx);
     if (status != SAI_STATUS_SUCCESS) {
         goto out;
     }
 
     memset(&ets, 0, sizeof(ets));
-
-    sai_qos_db_write_lock();
 
     if (scheduler_id != SAI_NULL_OBJECT_ID) {
         status = sched_db_entry_get(scheduler_id, &sched);
@@ -842,7 +842,7 @@ sai_status_t mlnx_scheduler_to_port_apply(sai_object_id_t scheduler_id, sai_obje
         goto out;
     }
 
-    sai_qos_port_db[port_idx].scheduler_id = scheduler_id;
+    g_sai_db_ptr->ports_db[port_idx].scheduler_id = scheduler_id;
     sai_qos_db_sync();
 
 out:
@@ -853,11 +853,11 @@ out:
 /* DB write lock is required */
 sai_status_t mlnx_scheduler_to_group_apply(sai_object_id_t scheduler_id, sai_object_id_t group_id)
 {
-    mlnx_qos_port_config_t *port;
-    sx_port_log_id_t        port_id;
-    sai_status_t            status;
-    uint8_t                 level;
-    uint8_t                 index;
+    mlnx_port_config_t *port;
+    sx_port_log_id_t    port_id;
+    sai_status_t        status;
+    uint8_t             level;
+    uint8_t             index;
 
     status = mlnx_sched_group_parse_id(group_id, &port_id, &level, &index);
     if (SAI_ERR(status)) {
@@ -869,7 +869,7 @@ sai_status_t mlnx_scheduler_to_group_apply(sai_object_id_t scheduler_id, sai_obj
         return status;
     }
 
-    status = mlnx_port_qos_cfg_lookup(port_id, &port);
+    status = mlnx_port_by_log_id(port_id, &port);
     if (SAI_ERR(status)) {
         return status;
     }
